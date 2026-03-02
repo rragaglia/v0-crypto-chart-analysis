@@ -17,7 +17,15 @@ import { processEmaData, analyzeEmas, getMarketSummary, formatPrice } from "@/li
 import { Activity, TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+const fetcher = async (url: string) => {
+  const res = await fetch(url);
+  const data = await res.json();
+  // Even on 200, check for error field in response
+  if (data.error && (!data.prices || data.prices.length === 0)) {
+    throw new Error(data.error);
+  }
+  return data;
+};
 
 const TIMEFRAMES = [
   { value: "90", label: "90 dias" },
@@ -50,6 +58,9 @@ export function CryptoDashboard() {
     {
       revalidateOnFocus: false,
       dedupingInterval: 300000,
+      keepPreviousData: false,
+      errorRetryCount: 2,
+      errorRetryInterval: 3000,
     }
   );
 
@@ -65,23 +76,44 @@ export function CryptoDashboard() {
     (c: { id: string }) => c.id === selectedCoin
   );
 
-  const { pricePoints, emas, analyses, summary, currentPrice } = (() => {
-    if (!marketData?.prices || marketData.error) {
+  const { pricePoints, emas, analyses, summary, currentPrice, dataWarning } = (() => {
+    if (!marketData?.prices || !Array.isArray(marketData.prices) || marketData.prices.length === 0) {
       return {
         pricePoints: [],
         emas: [],
         analyses: [],
         summary: null,
         currentPrice: 0,
+        dataWarning: marketData?.error || null,
       };
     }
 
     const { pricePoints, emas } = processEmaData(marketData.prices);
+
+    if (pricePoints.length === 0) {
+      return {
+        pricePoints: [],
+        emas: [],
+        analyses: [],
+        summary: null,
+        currentPrice: 0,
+        dataWarning: "No se pudieron procesar los datos de precio.",
+      };
+    }
+
     const currentPrice = pricePoints[pricePoints.length - 1]?.price || 0;
     const analyses = analyzeEmas(currentPrice, emas);
     const summary = getMarketSummary(analyses);
 
-    return { pricePoints, emas, analyses, summary, currentPrice };
+    const missingEmas = [20, 50, 100, 200].filter(
+      (p) => !emas.find((e) => e.period === p)
+    );
+    const dataWarning =
+      missingEmas.length > 0
+        ? `Datos insuficientes para EMA ${missingEmas.join(", ")}. Intenta un periodo mas largo.`
+        : null;
+
+    return { pricePoints, emas, analyses, summary, currentPrice, dataWarning };
   })();
 
   const hasError = coinsError || marketError;
@@ -188,8 +220,21 @@ export function CryptoDashboard() {
         {/* Error state */}
         {hasError && (
           <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger text-sm">
-            Error al cargar datos. Puede ser un limite de la API de CoinGecko.
+            Error al cargar datos. Puede ser un limite de la API de CoinGecko (gratuita).
             Intenta de nuevo en unos segundos.
+            <button
+              onClick={handleRefresh}
+              className="ml-2 underline hover:no-underline"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+
+        {/* Data warning (missing EMAs) */}
+        {dataWarning && !hasError && (
+          <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 text-warning text-sm">
+            {dataWarning}
           </div>
         )}
 

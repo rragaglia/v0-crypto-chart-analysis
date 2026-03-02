@@ -65,6 +65,10 @@ const EMA_CONFIGS = [
 export function processEmaData(
   priceData: [number, number][]
 ): { pricePoints: PricePoint[]; emas: EmaData[] } {
+  if (!priceData || priceData.length === 0) {
+    return { pricePoints: [], emas: [] };
+  }
+
   const pricePoints: PricePoint[] = priceData.map(([timestamp, price]) => ({
     timestamp,
     price,
@@ -76,24 +80,27 @@ export function processEmaData(
 
   const rawPrices = pricePoints.map((p) => p.price);
 
-  const emas: EmaData[] = EMA_CONFIGS.map((config) => {
-    const emaValues = calculateEMA(rawPrices, config.period);
-    const values = pricePoints
-      .map((p, i) => ({
-        timestamp: p.timestamp,
-        value: emaValues[i] || 0,
-      }))
-      .filter((v) => v.value > 0);
+  const emas: EmaData[] = EMA_CONFIGS
+    .filter((config) => rawPrices.length >= config.period)
+    .map((config) => {
+      const emaValues = calculateEMA(rawPrices, config.period);
+      const values = pricePoints
+        .map((p, i) => ({
+          timestamp: p.timestamp,
+          value: emaValues[i] || 0,
+        }))
+        .filter((v) => v.value > 0);
 
-    return {
-      period: config.period,
-      values,
-      currentValue: emaValues[emaValues.length - 1] || 0,
-      label: config.label,
-      color: config.color,
-      type: config.type,
-    };
-  });
+      return {
+        period: config.period,
+        values,
+        currentValue: emaValues[emaValues.length - 1] || 0,
+        label: config.label,
+        color: config.color,
+        type: config.type,
+      };
+    })
+    .filter((ema) => ema.currentValue > 0);
 
   return { pricePoints, emas };
 }
@@ -177,102 +184,169 @@ export function analyzeEmas(
 }
 
 export function getMarketSummary(analyses: EmaAnalysis[]): MarketSummary {
+  if (analyses.length === 0) {
+    return {
+      label: "Datos insuficientes",
+      description: "No hay suficientes datos historicos para calcular EMAs.",
+      severity: "neutral",
+    };
+  }
+
   const ema20 = analyses.find((a) => a.ema.period === 20);
   const ema50 = analyses.find((a) => a.ema.period === 50);
   const ema100 = analyses.find((a) => a.ema.period === 100);
   const ema200 = analyses.find((a) => a.ema.period === 200);
 
-  if (!ema20 || !ema50 || !ema100 || !ema200) {
+  // If we only have fast EMAs (not enough data for slow ones)
+  if (!ema100 && !ema200) {
+    if (!ema20 && !ema50) {
+      return {
+        label: "Datos insuficientes",
+        description: "No hay suficientes datos historicos para calcular ninguna EMA.",
+        severity: "neutral",
+      };
+    }
+
+    const available = analyses;
+    const allAbove = available.every((a) => a.position === "above");
+    const allBelow = available.every((a) => a.position === "below");
+
+    if (allAbove) {
+      return {
+        label: "Tendencia alcista (corto plazo)",
+        description:
+          "Precio sobre EMAs rapidas disponibles. Sin datos suficientes para EMAs lentas.",
+        severity: "bullish",
+      };
+    }
+    if (allBelow) {
+      return {
+        label: "Tendencia bajista (corto plazo)",
+        description:
+          "Precio bajo EMAs rapidas disponibles. Sin datos suficientes para EMAs lentas.",
+        severity: "bearish",
+      };
+    }
     return {
-      label: "Datos insuficientes",
-      description: "No hay suficientes datos para generar un resumen.",
+      label: "Mixto (datos limitados)",
+      description:
+        "Senales mixtas con los datos disponibles. Necesitas mas datos historicos para un analisis completo.",
       severity: "neutral",
     };
   }
 
-  const allAbove = analyses.every((a) => a.position === "above");
-  const allBelow = analyses.every((a) => a.position === "below");
-  const fastAbove = ema20.position === "above" && ema50.position === "above";
-  const slowBelow = ema100.position === "below" && ema200.position === "below";
-  const slowAbove = ema100.position === "above" && ema200.position === "above";
-  const fastBelow = ema20.position === "below" && ema50.position === "below";
+  // Full analysis with all 4 EMAs available
+  if (ema20 && ema50 && ema100 && ema200) {
+    const allAbove = analyses.every((a) => a.position === "above");
+    const allBelow = analyses.every((a) => a.position === "below");
+    const fastAbove = ema20.position === "above" && ema50.position === "above";
+    const slowBelow = ema100.position === "below" && ema200.position === "below";
+    const slowAbove = ema100.position === "above" && ema200.position === "above";
+    const fastBelow = ema20.position === "below" && ema50.position === "below";
 
-  if (allAbove && ema200.percentageDiff > 30) {
+    if (allAbove && ema200.percentageDiff > 30) {
+      return {
+        label: "Euforia / Techo potencial",
+        description:
+          "Precio muy por encima de todas las EMAs. Mercado sobrecalentado, posible correccion inminente.",
+        severity: "warning",
+      };
+    }
+
+    if (allAbove) {
+      return {
+        label: "Bull Market",
+        description:
+          "Precio por encima de todas las EMAs. Tendencia alcista confirmada en todos los marcos temporales.",
+        severity: "bullish",
+      };
+    }
+
+    if (allBelow && Math.abs(ema200.percentageDiff) > 30) {
+      return {
+        label: "Capitulacion / Bear Market extremo",
+        description:
+          "Precio muy por debajo de todas las EMAs. Zona de capitulacion, posible suelo de mercado.",
+        severity: "bearish",
+      };
+    }
+
+    if (allBelow) {
+      return {
+        label: "Bear Market",
+        description:
+          "Precio por debajo de todas las EMAs. Tendencia bajista dominante.",
+        severity: "bearish",
+      };
+    }
+
+    if (fastAbove && slowBelow) {
+      return {
+        label: "Recuperacion temprana",
+        description:
+          "Precio sobre EMAs rapidas pero bajo EMAs lentas. Posible inicio de recuperacion, pero aun no confirmada.",
+        severity: "warning",
+      };
+    }
+
+    if (fastBelow && slowAbove) {
+      return {
+        label: "Correccion en tendencia alcista",
+        description:
+          "Precio bajo EMAs rapidas pero sobre EMAs lentas. Correccion temporal dentro de tendencia alcista mayor.",
+        severity: "warning",
+      };
+    }
+
+    if (ema20.position === "above" && ema50.position === "below" && slowBelow) {
+      return {
+        label: "Rebote tecnico",
+        description:
+          "Solo EMA 20 superada. Posible rebote de gato muerto o inicio de recuperacion. Precaucion.",
+        severity: "warning",
+      };
+    }
+
+    if (ema20.position === "below" && ema50.position === "above") {
+      return {
+        label: "Pullback leve",
+        description:
+          "Precio bajo EMA 20 pero sobre EMA 50. Retroceso menor, puede ser oportunidad de compra si la tendencia se mantiene.",
+        severity: "neutral",
+      };
+    }
+
     return {
-      label: "Euforia / Techo potencial",
+      label: "Mercado mixto",
       description:
-        "Precio muy por encima de todas las EMAs. Mercado sobrecalentado, posible correccion inminente.",
-      severity: "warning",
+        "Senales mixtas entre EMAs rapidas y lentas. Zona de transicion, esperar confirmacion de tendencia.",
+      severity: "neutral",
     };
   }
 
-  if (allAbove) {
+  // Partial analysis (have some slow EMAs but not all 4)
+  const aboveCount = analyses.filter((a) => a.position === "above").length;
+  const belowCount = analyses.filter((a) => a.position === "below").length;
+
+  if (aboveCount > belowCount) {
     return {
-      label: "Bull Market",
-      description:
-        "Precio por encima de todas las EMAs. Tendencia alcista confirmada en todos los marcos temporales.",
+      label: "Tendencia alcista (parcial)",
+      description: `Precio sobre ${aboveCount} de ${analyses.length} EMAs disponibles. Tendencia mayormente alcista.`,
       severity: "bullish",
     };
   }
-
-  if (allBelow && Math.abs(ema200.percentageDiff) > 30) {
+  if (belowCount > aboveCount) {
     return {
-      label: "Capitulacion / Bear Market extremo",
-      description:
-        "Precio muy por debajo de todas las EMAs. Zona de capitulacion, posible suelo de mercado.",
+      label: "Tendencia bajista (parcial)",
+      description: `Precio bajo ${belowCount} de ${analyses.length} EMAs disponibles. Tendencia mayormente bajista.`,
       severity: "bearish",
-    };
-  }
-
-  if (allBelow) {
-    return {
-      label: "Bear Market",
-      description:
-        "Precio por debajo de todas las EMAs. Tendencia bajista dominante.",
-      severity: "bearish",
-    };
-  }
-
-  if (fastAbove && slowBelow) {
-    return {
-      label: "Recuperacion temprana",
-      description:
-        "Precio sobre EMAs rapidas pero bajo EMAs lentas. Posible inicio de recuperacion, pero aun no confirmada.",
-      severity: "warning",
-    };
-  }
-
-  if (fastBelow && slowAbove) {
-    return {
-      label: "Correccion en tendencia alcista",
-      description:
-        "Precio bajo EMAs rapidas pero sobre EMAs lentas. Correccion temporal dentro de tendencia alcista mayor.",
-      severity: "warning",
-    };
-  }
-
-  if (ema20.position === "above" && ema50.position === "below" && slowBelow) {
-    return {
-      label: "Rebote tecnico",
-      description:
-        "Solo EMA 20 superada. Posible rebote de gato muerto o inicio de recuperacion. Precaucion.",
-      severity: "warning",
-    };
-  }
-
-  if (ema20.position === "below" && ema50.position === "above") {
-    return {
-      label: "Pullback leve",
-      description:
-        "Precio bajo EMA 20 pero sobre EMA 50. Retroceso menor, puede ser oportunidad de compra si la tendencia se mantiene.",
-      severity: "neutral",
     };
   }
 
   return {
     label: "Mercado mixto",
     description:
-      "Senales mixtas entre EMAs rapidas y lentas. Zona de transicion, esperar confirmacion de tendencia.",
+      "Senales mixtas entre las EMAs disponibles. Esperar mas datos o confirmacion de tendencia.",
     severity: "neutral",
   };
 }
