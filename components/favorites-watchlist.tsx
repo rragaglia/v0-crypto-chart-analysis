@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 
 const STORAGE_KEY = "crypto-ema-favorites";
-const DEFAULT_FAVORITES = ["bitcoin", "ethereum", "solana", "cardano", "dogecoin"];
+const DEFAULT_FAVORITES: string[] = [];
 
 const TIMEFRAMES = [
   { value: "90", label: "90d" },
@@ -58,9 +58,7 @@ function loadFavorites(): string[] {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      return Array.isArray(parsed) && parsed.length > 0
-        ? parsed
-        : DEFAULT_FAVORITES;
+      return Array.isArray(parsed) ? parsed : DEFAULT_FAVORITES;
     }
   } catch {
     // ignore
@@ -424,10 +422,10 @@ export function FavoritesWatchlist({ coins }: { coins: Coin[] | undefined }) {
                       <TableCell>
                         <button
                           onClick={() => removeFavorite(row.coinId)}
-                          className="text-muted-foreground/40 hover:text-danger transition-colors"
+                          className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
                           aria-label={`Quitar ${row.coin?.name || row.coinId} de favoritos`}
                         >
-                          <X className="size-3.5" />
+                          <X className="size-4" />
                         </button>
                       </TableCell>
                       <TableCell>
