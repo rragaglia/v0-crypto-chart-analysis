@@ -193,6 +193,34 @@ const SYMBOL_MAPPINGS: Record<string, { hyperliquid: string; binance: string }> 
   decred: { hyperliquid: "DCR", binance: "DCR" },
   horizen: { hyperliquid: "ZEN", binance: "ZEN" },
   zencash: { hyperliquid: "ZEN", binance: "ZEN" },
+  // Hyperliquid native token
+  hyperliquid: { hyperliquid: "HYPE", binance: "HYPE" },
+  hype: { hyperliquid: "HYPE", binance: "HYPE" },
+  // Toncoin
+  toncoin: { hyperliquid: "TON", binance: "TON" },
+  ton: { hyperliquid: "TON", binance: "TON" },
+  "the-open-network": { hyperliquid: "TON", binance: "TON" },
+  // Bitcoin Cash
+  "bitcoin-cash": { hyperliquid: "BCH", binance: "BCH" },
+  bch: { hyperliquid: "BCH", binance: "BCH" },
+  // Polygon (POL - rebranded from MATIC)
+  "polygon-ecosystem-token": { hyperliquid: "POL", binance: "POL" },
+  pol: { hyperliquid: "POL", binance: "POL" },
+  polygon: { hyperliquid: "POL", binance: "POL" },
+  // LEO Token
+  "leo-token": { hyperliquid: "LEO", binance: "LEO" },
+  leo: { hyperliquid: "LEO", binance: "LEO" },
+  "unus-sed-leo": { hyperliquid: "LEO", binance: "LEO" },
+  // Ethereum Classic
+  "ethereum-classic": { hyperliquid: "ETC", binance: "ETC" },
+  etc: { hyperliquid: "ETC", binance: "ETC" },
+  // Cronos
+  "crypto-com-chain": { hyperliquid: "CRO", binance: "CRO" },
+  cronos: { hyperliquid: "CRO", binance: "CRO" },
+  cro: { hyperliquid: "CRO", binance: "CRO" },
+  // Bitcoin SV
+  "bitcoin-cash-sv": { hyperliquid: "BSV", binance: "BSV" },
+  bsv: { hyperliquid: "BSV", binance: "BSV" },
 };
 
 /**
