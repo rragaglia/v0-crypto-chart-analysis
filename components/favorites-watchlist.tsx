@@ -80,7 +80,7 @@ interface Coin {
   symbol: string;
   name: string;
   image: string;
-  current_price: number;
+  current_price?: number; // Optional - not available from static manifest
 }
 
 interface CoinRowData {
