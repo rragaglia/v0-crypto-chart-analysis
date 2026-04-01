@@ -19,6 +19,7 @@ export type FetchResult = {
 };
 
 // Common symbol mappings for cross-exchange compatibility
+// When a coin ID is not in this mapping, we try to derive the symbol from the ID itself
 const SYMBOL_MAPPINGS: Record<string, { hyperliquid: string; binance: string }> = {
   bitcoin: { hyperliquid: "BTC", binance: "BTC" },
   ethereum: { hyperliquid: "ETH", binance: "ETH" },
@@ -106,7 +107,147 @@ const SYMBOL_MAPPINGS: Record<string, { hyperliquid: string; binance: string }> 
   ethena: { hyperliquid: "ENA", binance: "ENA" },
   ondo: { hyperliquid: "ONDO", binance: "ONDO" },
   "ondo-finance": { hyperliquid: "ONDO", binance: "ONDO" },
+  // Hedera
+  hedera: { hyperliquid: "HBAR", binance: "HBAR" },
+  "hedera-hashgraph": { hyperliquid: "HBAR", binance: "HBAR" },
+  hbar: { hyperliquid: "HBAR", binance: "HBAR" },
+  // Additional popular coins
+  vechain: { hyperliquid: "VET", binance: "VET" },
+  "vechain-token": { hyperliquid: "VET", binance: "VET" },
+  kaspa: { hyperliquid: "KAS", binance: "KAS" },
+  "fetch-ai": { hyperliquid: "FET", binance: "FET" },
+  "artificial-superintelligence-alliance": { hyperliquid: "FET", binance: "FET" },
+  quant: { hyperliquid: "QNT", binance: "QNT" },
+  "quant-network": { hyperliquid: "QNT", binance: "QNT" },
+  mantle: { hyperliquid: "MNT", binance: "MNT" },
+  "beam-2": { hyperliquid: "BEAM", binance: "BEAM" },
+  beam: { hyperliquid: "BEAM", binance: "BEAM" },
+  floki: { hyperliquid: "FLOKI", binance: "FLOKI" },
+  "floki-inu": { hyperliquid: "FLOKI", binance: "FLOKI" },
+  bittensor: { hyperliquid: "TAO", binance: "TAO" },
+  thorchain: { hyperliquid: "RUNE", binance: "RUNE" },
+  synthetix: { hyperliquid: "SNX", binance: "SNX" },
+  "synthetix-network-token": { hyperliquid: "SNX", binance: "SNX" },
+  mina: { hyperliquid: "MINA", binance: "MINA" },
+  "mina-protocol": { hyperliquid: "MINA", binance: "MINA" },
+  conflux: { hyperliquid: "CFX", binance: "CFX" },
+  "conflux-token": { hyperliquid: "CFX", binance: "CFX" },
+  dydx: { hyperliquid: "DYDX", binance: "DYDX" },
+  "dydx-chain": { hyperliquid: "DYDX", binance: "DYDX" },
+  oasis: { hyperliquid: "ROSE", binance: "ROSE" },
+  "oasis-network": { hyperliquid: "ROSE", binance: "ROSE" },
+  akash: { hyperliquid: "AKT", binance: "AKT" },
+  "akash-network": { hyperliquid: "AKT", binance: "AKT" },
+  gmx: { hyperliquid: "GMX", binance: "GMX" },
+  frax: { hyperliquid: "FRAX", binance: "FRAX" },
+  "frax-share": { hyperliquid: "FXS", binance: "FXS" },
+  celo: { hyperliquid: "CELO", binance: "CELO" },
+  harmony: { hyperliquid: "ONE", binance: "ONE" },
+  "harmony-one": { hyperliquid: "ONE", binance: "ONE" },
+  ankr: { hyperliquid: "ANKR", binance: "ANKR" },
+  ocean: { hyperliquid: "OCEAN", binance: "OCEAN" },
+  "ocean-protocol": { hyperliquid: "OCEAN", binance: "OCEAN" },
+  woo: { hyperliquid: "WOO", binance: "WOO" },
+  "woo-network": { hyperliquid: "WOO", binance: "WOO" },
+  skale: { hyperliquid: "SKL", binance: "SKL" },
+  "skale-network": { hyperliquid: "SKL", binance: "SKL" },
+  iotex: { hyperliquid: "IOTX", binance: "IOTX" },
+  "iotex-token": { hyperliquid: "IOTX", binance: "IOTX" },
+  waves: { hyperliquid: "WAVES", binance: "WAVES" },
+  ont: { hyperliquid: "ONT", binance: "ONT" },
+  ontology: { hyperliquid: "ONT", binance: "ONT" },
+  qtum: { hyperliquid: "QTUM", binance: "QTUM" },
+  holo: { hyperliquid: "HOT", binance: "HOT" },
+  "holotoken": { hyperliquid: "HOT", binance: "HOT" },
+  ravencoin: { hyperliquid: "RVN", binance: "RVN" },
+  icon: { hyperliquid: "ICX", binance: "ICX" },
+  "icon-network": { hyperliquid: "ICX", binance: "ICX" },
+  storj: { hyperliquid: "STORJ", binance: "STORJ" },
+  arweave: { hyperliquid: "AR", binance: "AR" },
+  livepeer: { hyperliquid: "LPT", binance: "LPT" },
+  "band-protocol": { hyperliquid: "BAND", binance: "BAND" },
+  loopring: { hyperliquid: "LRC", binance: "LRC" },
+  nervos: { hyperliquid: "CKB", binance: "CKB" },
+  "nervos-network": { hyperliquid: "CKB", binance: "CKB" },
+  coti: { hyperliquid: "COTI", binance: "COTI" },
+  flux: { hyperliquid: "FLUX", binance: "FLUX" },
+  "zelcash": { hyperliquid: "FLUX", binance: "FLUX" },
+  syscoin: { hyperliquid: "SYS", binance: "SYS" },
+  mask: { hyperliquid: "MASK", binance: "MASK" },
+  "mask-network": { hyperliquid: "MASK", binance: "MASK" },
+  rlc: { hyperliquid: "RLC", binance: "RLC" },
+  "iexec-rlc": { hyperliquid: "RLC", binance: "RLC" },
+  nkn: { hyperliquid: "NKN", binance: "NKN" },
+  dent: { hyperliquid: "DENT", binance: "DENT" },
+  "request-network": { hyperliquid: "REQ", binance: "REQ" },
+  req: { hyperliquid: "REQ", binance: "REQ" },
+  bluzelle: { hyperliquid: "BLZ", binance: "BLZ" },
+  blz: { hyperliquid: "BLZ", binance: "BLZ" },
+  steem: { hyperliquid: "STEEM", binance: "STEEM" },
+  stacks: { hyperliquid: "STX", binance: "STX" },
+  "blockstack": { hyperliquid: "STX", binance: "STX" },
+  xdc: { hyperliquid: "XDC", binance: "XDC" },
+  "xdc-network": { hyperliquid: "XDC", binance: "XDC" },
+  zcash: { hyperliquid: "ZEC", binance: "ZEC" },
+  dash: { hyperliquid: "DASH", binance: "DASH" },
+  decred: { hyperliquid: "DCR", binance: "DCR" },
+  horizen: { hyperliquid: "ZEN", binance: "ZEN" },
+  zencash: { hyperliquid: "ZEN", binance: "ZEN" },
+  // Hyperliquid native token
+  hyperliquid: { hyperliquid: "HYPE", binance: "HYPE" },
+  hype: { hyperliquid: "HYPE", binance: "HYPE" },
+  // Toncoin
+  toncoin: { hyperliquid: "TON", binance: "TON" },
+  ton: { hyperliquid: "TON", binance: "TON" },
+  "the-open-network": { hyperliquid: "TON", binance: "TON" },
+  // Bitcoin Cash
+  "bitcoin-cash": { hyperliquid: "BCH", binance: "BCH" },
+  bch: { hyperliquid: "BCH", binance: "BCH" },
+  // Polygon (POL - rebranded from MATIC)
+  "polygon-ecosystem-token": { hyperliquid: "POL", binance: "POL" },
+  pol: { hyperliquid: "POL", binance: "POL" },
+  polygon: { hyperliquid: "POL", binance: "POL" },
+  // LEO Token
+  "leo-token": { hyperliquid: "LEO", binance: "LEO" },
+  leo: { hyperliquid: "LEO", binance: "LEO" },
+  "unus-sed-leo": { hyperliquid: "LEO", binance: "LEO" },
+  // Ethereum Classic
+  "ethereum-classic": { hyperliquid: "ETC", binance: "ETC" },
+  etc: { hyperliquid: "ETC", binance: "ETC" },
+  // Cronos
+  "crypto-com-chain": { hyperliquid: "CRO", binance: "CRO" },
+  cronos: { hyperliquid: "CRO", binance: "CRO" },
+  cro: { hyperliquid: "CRO", binance: "CRO" },
+  // Bitcoin SV
+  "bitcoin-cash-sv": { hyperliquid: "BSV", binance: "BSV" },
+  bsv: { hyperliquid: "BSV", binance: "BSV" },
 };
+
+/**
+ * Attempts to derive a trading symbol from a CoinGecko-style ID.
+ * For IDs not in SYMBOL_MAPPINGS, we try common transformations.
+ */
+function deriveSymbol(coinId: string): string {
+  const lower = coinId.toLowerCase();
+  
+  // Check mapping first
+  if (SYMBOL_MAPPINGS[lower]) {
+    return SYMBOL_MAPPINGS[lower].binance;
+  }
+  
+  // Common patterns: remove suffixes like "-token", "-network", "-protocol", "-coin"
+  let cleaned = lower
+    .replace(/-token$/, "")
+    .replace(/-network$/, "")
+    .replace(/-protocol$/, "")
+    .replace(/-coin$/, "")
+    .replace(/-2$/, "")
+    .replace(/-chain$/, "")
+    .replace(/-finance$/, "");
+  
+  // Convert dashes to nothing and uppercase
+  return cleaned.replace(/-/g, "").toUpperCase();
+}
 
 // ─── Days helper ─────────────────────────────────────────────────────────────
 
@@ -136,7 +277,7 @@ async function fetchFromHyperliquid(
   days: number | string
 ): Promise<FetchResult> {
   const mapping = SYMBOL_MAPPINGS[symbol.toLowerCase()];
-  const coin = mapping?.hyperliquid || symbol.toUpperCase();
+  const coin = mapping?.hyperliquid || deriveSymbol(symbol);
   const numDays = resolveDays(days);
   const interval = getIntervalForDays(numDays);
 
@@ -184,7 +325,7 @@ async function fetchFromBinance(
   days: number | string
 ): Promise<FetchResult> {
   const mapping = SYMBOL_MAPPINGS[symbol.toLowerCase()];
-  const baseSymbol = mapping?.binance || symbol.toUpperCase();
+  const baseSymbol = mapping?.binance || deriveSymbol(symbol);
   const numDays = resolveDays(days);
   const interval = getIntervalForDays(numDays);
 
