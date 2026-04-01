@@ -21,9 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { processEmaData, analyzeEmas, getMarketSummary, formatPrice } from "@/lib/ema";
-import { Activity, TrendingUp, TrendingDown, RefreshCw, BarChart3, Star, Database } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, RefreshCw, BarChart3, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { getSourceDisplayName } from "@/lib/price-fetcher";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -237,14 +236,6 @@ export function CryptoDashboard() {
                     <TrendingDown className="size-4 mr-1" />
                   ) : null}
                   {summary.label}
-                </Badge>
-              )}
-
-              {/* Data source indicator */}
-              {marketData?.source && (
-                <Badge variant="outline" className="text-xs px-2 py-1 bg-muted/30 text-muted-foreground border-muted-foreground/20">
-                  <Database className="size-3 mr-1" />
-                  {getSourceDisplayName(marketData.source)}
                 </Badge>
               )}
             </div>

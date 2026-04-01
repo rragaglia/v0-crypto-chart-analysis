@@ -1,45 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchPriceDataWithFallback } from "@/lib/price-fetcher";
+
+async function fetchWithRetry(
+  url: string,
+  retries = 3,
+  delay = 2000
+): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (response.ok) return response;
+    if (response.status === 429 || response.status === 401) {
+      if (i < retries - 1) {
+        await new Promise((r) => setTimeout(r, delay * (i + 1)));
+        continue;
+      }
+    }
+    if (response.status !== 429 && response.status !== 401) {
+      throw new Error(`CoinGecko API error: ${response.status}`);
+    }
+  }
+  throw new Error("Rate limit exceeded");
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const coinIds = searchParams.get("coinIds")?.split(",") || [];
-  const days = parseInt(searchParams.get("days") || "365", 10);
+  const days = searchParams.get("days") || "365";
 
   if (coinIds.length === 0) {
-    return NextResponse.json({ results: {} });
+    return NextResponse.json({ results: [] });
   }
 
   const results: Record<
     string,
-    {
-      prices: [number, number][];
-      source?: string;
-      symbol?: string;
-      error?: string;
-    }
+    { prices: [number, number][]; error?: string }
   > = {};
 
-  // Fetch sequentially to avoid rate limits
+  // Fetch sequentially to avoid CoinGecko rate limits on free tier
   for (const coinId of coinIds) {
-    const result = await fetchPriceDataWithFallback(coinId, days);
+    try {
+      const response = await fetchWithRetry(
+        `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=daily`
+      );
+      const data = await response.json();
 
-    if (result.success && result.data) {
-      results[coinId] = {
-        prices: result.data.prices,
-        source: result.data.source,
-        symbol: result.data.symbol,
-      };
-    } else {
-      results[coinId] = {
-        prices: [],
-        error: result.error || "Failed to fetch",
-      };
+      if (
+        !data.prices ||
+        !Array.isArray(data.prices) ||
+        data.prices.length === 0
+      ) {
+        results[coinId] = { prices: [], error: "No data available" };
+      } else {
+        results[coinId] = { prices: data.prices };
+      }
+    } catch {
+      results[coinId] = { prices: [], error: "Failed to fetch" };
     }
 
-    // Small delay between requests if not last item
+    // Small delay between requests to respect rate limits
     if (coinIds.indexOf(coinId) < coinIds.length - 1) {
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 1200));
     }
   }
 
