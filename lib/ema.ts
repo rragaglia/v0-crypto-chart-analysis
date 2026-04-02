@@ -367,3 +367,158 @@ export function formatPrice(price: number): string {
     maximumFractionDigits: 6,
   });
 }
+
+// ─── EMA Crossover detection ─────────────────────────────────────────────────
+
+export type CrossoverDirection = "bullish" | "bearish";
+
+export interface EmaCrossover {
+  /** The faster EMA (lower period) */
+  fastPeriod: number;
+  /** The slower EMA (higher period) */
+  slowPeriod: number;
+  /** "bullish" = fast crossed ABOVE slow (golden), "bearish" = fast crossed BELOW slow (death) */
+  direction: CrossoverDirection;
+  /** Human-readable date of the cross */
+  date: string;
+  /** Timestamp of the cross */
+  timestamp: number;
+  /** Price at the moment of the cross */
+  price: number;
+  /** Days ago */
+  daysAgo: number;
+}
+
+export interface CrossoverConclusion {
+  crossovers: EmaCrossover[];
+  /** Short conclusion text derived from last cross + current price-EMA gap */
+  conclusion: string;
+  severity: "bullish" | "bearish" | "warning" | "neutral";
+}
+
+/**
+ * Scan all pairs of EMAs and find the last 2 crossover events across the
+ * entire dataset, ordered from most recent to oldest.
+ */
+export function detectEmaCrossovers(
+  pricePoints: PricePoint[],
+  emas: EmaData[]
+): CrossoverConclusion {
+  if (emas.length < 2 || pricePoints.length === 0) {
+    return { crossovers: [], conclusion: "Datos insuficientes para detectar cruces.", severity: "neutral" };
+  }
+
+  // Build timestamp→value maps for every EMA period
+  const emaByPeriod = new Map<number, Map<number, number>>();
+  for (const ema of emas) {
+    const m = new Map<number, number>();
+    for (const v of ema.values) m.set(v.timestamp, v.value);
+    emaByPeriod.set(ema.period, m);
+  }
+
+  const sortedPeriods = emas.map((e) => e.period).sort((a, b) => a - b);
+  const allCrossovers: EmaCrossover[] = [];
+  const now = Date.now();
+
+  // Compare every fast/slow pair
+  for (let i = 0; i < sortedPeriods.length - 1; i++) {
+    for (let j = i + 1; j < sortedPeriods.length; j++) {
+      const fastPeriod = sortedPeriods[i];
+      const slowPeriod = sortedPeriods[j];
+      const fastMap = emaByPeriod.get(fastPeriod)!;
+      const slowMap = emaByPeriod.get(slowPeriod)!;
+
+      // Walk through pricePoints in order and detect sign changes
+      let prevDiff: number | null = null;
+
+      for (const point of pricePoints) {
+        const fast = fastMap.get(point.timestamp);
+        const slow = slowMap.get(point.timestamp);
+        if (fast === undefined || slow === undefined || fast === 0 || slow === 0) continue;
+
+        const diff = fast - slow;
+        if (prevDiff !== null && Math.sign(diff) !== Math.sign(prevDiff) && diff !== 0) {
+          const direction: CrossoverDirection = diff > 0 ? "bullish" : "bearish";
+          const daysAgo = Math.round((now - point.timestamp) / 86_400_000);
+          allCrossovers.push({
+            fastPeriod,
+            slowPeriod,
+            direction,
+            date: point.date,
+            timestamp: point.timestamp,
+            price: point.price,
+            daysAgo,
+          });
+        }
+        if (diff !== 0) prevDiff = diff;
+      }
+    }
+  }
+
+  if (allCrossovers.length === 0) {
+    return {
+      crossovers: [],
+      conclusion: "No se detectaron cruces de EMAs en el período seleccionado.",
+      severity: "neutral",
+    };
+  }
+
+  // Sort most recent first, keep last 2
+  allCrossovers.sort((a, b) => b.timestamp - a.timestamp);
+  const last2 = allCrossovers.slice(0, 2);
+
+  // Build conclusion from the most recent cross + current price-EMA gap
+  const latest = last2[0];
+  const fastEma = emas.find((e) => e.period === latest.fastPeriod);
+  const slowEma = emas.find((e) => e.period === latest.slowPeriod);
+  const currentPrice = pricePoints[pricePoints.length - 1]?.price ?? 0;
+
+  let conclusion = "";
+  let severity: CrossoverConclusion["severity"] = "neutral";
+
+  const crossName =
+    latest.direction === "bullish"
+      ? `Cruce alcista (EMA ${latest.fastPeriod} sobre EMA ${latest.slowPeriod})`
+      : `Cruce bajista (EMA ${latest.fastPeriod} bajo EMA ${latest.slowPeriod})`;
+
+  const whenStr =
+    latest.daysAgo === 0
+      ? "hoy"
+      : latest.daysAgo === 1
+      ? "hace 1 día"
+      : `hace ${latest.daysAgo} días`;
+
+  // Gap between current price and the faster EMA of the latest cross
+  let gapText = "";
+  if (fastEma && fastEma.currentValue > 0) {
+    const gapPct = ((currentPrice - fastEma.currentValue) / fastEma.currentValue) * 100;
+    const sign = gapPct >= 0 ? "+" : "";
+    gapText = ` El precio está ${sign}${gapPct.toFixed(1)}% respecto a la EMA ${latest.fastPeriod} actualmente.`;
+  }
+
+  if (latest.direction === "bullish") {
+    severity = "bullish";
+    if (fastEma && currentPrice > fastEma.currentValue && slowEma && currentPrice > slowEma.currentValue) {
+      conclusion = `${crossName} confirmado ${whenStr}.${gapText} La tendencia continúa alcista: precio sobre ambas EMAs.`;
+    } else if (fastEma && currentPrice < fastEma.currentValue) {
+      conclusion = `${crossName} ocurrió ${whenStr}, pero el precio ya perdió la EMA ${latest.fastPeriod}.${gapText} Señal alcista debilitada.`;
+      severity = "warning";
+    } else {
+      conclusion = `${crossName} ocurrió ${whenStr}.${gapText} Monitorear si el precio sostiene el nivel.`;
+      severity = "warning";
+    }
+  } else {
+    severity = "bearish";
+    if (fastEma && currentPrice < fastEma.currentValue && slowEma && currentPrice < slowEma.currentValue) {
+      conclusion = `${crossName} confirmado ${whenStr}.${gapText} La presión bajista continúa activa.`;
+    } else if (fastEma && currentPrice > fastEma.currentValue) {
+      conclusion = `${crossName} ocurrió ${whenStr}, pero el precio ya recuperó la EMA ${latest.fastPeriod}.${gapText} Señal bajista debilitada, posible recuperación.`;
+      severity = "warning";
+    } else {
+      conclusion = `${crossName} ocurrió ${whenStr}.${gapText} Observar si la presión bajista persiste.`;
+      severity = "warning";
+    }
+  }
+
+  return { crossovers: last2, conclusion, severity };
+}

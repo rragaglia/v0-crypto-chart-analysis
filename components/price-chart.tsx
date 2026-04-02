@@ -39,16 +39,11 @@ export function PriceChart({ pricePoints, emas, coinName }: PriceChartProps) {
     });
 
     return pricePoints.map((point): ChartDataPoint => {
-      const entry: ChartDataPoint = {
-        date: point.date,
-        price: point.price,
-      };
-
-      if (emaMap[20]?.get(point.timestamp)) entry.ema20 = emaMap[20].get(point.timestamp);
-      if (emaMap[50]?.get(point.timestamp)) entry.ema50 = emaMap[50].get(point.timestamp);
+      const entry: ChartDataPoint = { date: point.date, price: point.price };
+      if (emaMap[20]?.get(point.timestamp))  entry.ema20  = emaMap[20].get(point.timestamp);
+      if (emaMap[50]?.get(point.timestamp))  entry.ema50  = emaMap[50].get(point.timestamp);
       if (emaMap[100]?.get(point.timestamp)) entry.ema100 = emaMap[100].get(point.timestamp);
       if (emaMap[200]?.get(point.timestamp)) entry.ema200 = emaMap[200].get(point.timestamp);
-
       return entry;
     });
   }, [pricePoints, emas]);
@@ -92,9 +87,7 @@ export function PriceChart({ pricePoints, emas, coinName }: PriceChartProps) {
                 }}
                 formatter={(value: number, name: string) => [
                   formatPrice(value),
-                  name === "price"
-                    ? "Precio"
-                    : name.toUpperCase().replace("EMA", "EMA "),
+                  name === "price" ? "Precio" : name.toUpperCase().replace("EMA", "EMA "),
                 ]}
                 labelStyle={{ color: "oklch(0.6 0 0)" }}
               />
@@ -102,58 +95,17 @@ export function PriceChart({ pricePoints, emas, coinName }: PriceChartProps) {
                 wrapperStyle={{ fontSize: "12px", paddingTop: "10px" }}
                 formatter={(value: string) => {
                   const labels: Record<string, string> = {
-                    price: "Precio",
-                    ema20: "EMA 20",
-                    ema50: "EMA 50",
-                    ema100: "EMA 100",
-                    ema200: "EMA 200",
+                    price: "Precio", ema20: "EMA 20", ema50: "EMA 50",
+                    ema100: "EMA 100", ema200: "EMA 200",
                   };
                   return labels[value] || value;
                 }}
               />
-              <Line
-                type="monotone"
-                dataKey="price"
-                stroke="oklch(0.95 0 0)"
-                strokeWidth={2}
-                dot={false}
-                name="price"
-              />
-              <Line
-                type="monotone"
-                dataKey="ema20"
-                stroke="oklch(0.72 0.19 165)"
-                strokeWidth={1.5}
-                dot={false}
-                name="ema20"
-                strokeDasharray="0"
-              />
-              <Line
-                type="monotone"
-                dataKey="ema50"
-                stroke="oklch(0.7 0.15 250)"
-                strokeWidth={1.5}
-                dot={false}
-                name="ema50"
-              />
-              <Line
-                type="monotone"
-                dataKey="ema100"
-                stroke="oklch(0.75 0.18 55)"
-                strokeWidth={1.5}
-                dot={false}
-                name="ema100"
-                strokeDasharray="6 3"
-              />
-              <Line
-                type="monotone"
-                dataKey="ema200"
-                stroke="oklch(0.65 0.2 25)"
-                strokeWidth={1.5}
-                dot={false}
-                name="ema200"
-                strokeDasharray="6 3"
-              />
+              <Line type="monotone" dataKey="price"  stroke="oklch(0.95 0 0)"      strokeWidth={2}   dot={false} name="price"  />
+              <Line type="monotone" dataKey="ema20"  stroke="oklch(0.72 0.19 165)" strokeWidth={1.5} dot={false} name="ema20"  />
+              <Line type="monotone" dataKey="ema50"  stroke="oklch(0.7 0.15 250)"  strokeWidth={1.5} dot={false} name="ema50"  />
+              <Line type="monotone" dataKey="ema100" stroke="oklch(0.75 0.18 55)"  strokeWidth={1.5} dot={false} name="ema100" />
+              <Line type="monotone" dataKey="ema200" stroke="oklch(0.65 0.2 25)"   strokeWidth={1.5} dot={false} name="ema200" />
             </LineChart>
           </ResponsiveContainer>
         </div>

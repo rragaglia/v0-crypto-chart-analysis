@@ -80,7 +80,7 @@ interface Coin {
   symbol: string;
   name: string;
   image: string;
-  current_price?: number; // Optional - not available from static manifest
+  current_price: number;
 }
 
 interface CoinRowData {
@@ -153,7 +153,7 @@ const batchFetcher = async (url: string) => {
   return data;
 };
 
-export function FavoritesWatchlist({ coins }: { coins: Coin[] | undefined }) {
+export function FavoritesWatchlist({ coins, onSelectCoin }: { coins: Coin[] | undefined; onSelectCoin?: (coinId: string) => void }) {
   const [favorites, setFavorites] = useState<string[]>(loadFavorites);
   const [days, setDays] = useState("365");
   const [addSearch, setAddSearch] = useState("");
@@ -438,9 +438,14 @@ export function FavoritesWatchlist({ coins }: { coins: Coin[] | undefined }) {
                             />
                           )}
                           <div className="flex flex-col">
-                            <span className="font-medium text-foreground text-sm">
+                            <button
+                              onClick={() => onSelectCoin?.(row.coinId)}
+                              className="font-medium text-foreground text-sm text-left hover:text-primary hover:underline transition-colors cursor-pointer disabled:cursor-default"
+                              disabled={!onSelectCoin}
+                              title={onSelectCoin ? `Ver análisis de ${row.coin?.name || row.coinId}` : undefined}
+                            >
                               {row.coin?.name || row.coinId}
-                            </span>
+                            </button>
                             <span className="text-[10px] text-muted-foreground uppercase">
                               {row.coin?.symbol || ""}
                             </span>
