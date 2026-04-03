@@ -9,8 +9,8 @@ interface EmaCrossoverPanelProps {
 }
 
 const EMA_COLORS: Record<number, string> = {
-  20:  "oklch(0.72 0.19 165)",
-  50:  "oklch(0.7  0.15 250)",
+  20: "oklch(0.72 0.19 165)",
+  50: "oklch(0.7  0.15 250)",
   100: "oklch(0.75 0.18  55)",
   200: "oklch(0.65 0.2   25)",
 };
@@ -18,28 +18,28 @@ const EMA_COLORS: Record<number, string> = {
 function severityColors(severity: string) {
   switch (severity) {
     case "bullish": return {
-      bg:     "oklch(0.72 0.19 165 / 0.08)",
+      bg: "oklch(0.72 0.19 165 / 0.08)",
       border: "oklch(0.72 0.19 165 / 0.28)",
-      icon:   "var(--color-success, #22c55e)",
-      text:   "var(--color-success, #22c55e)",
+      icon: "var(--color-success, #22c55e)",
+      text: "var(--color-success, #22c55e)",
     };
     case "bearish": return {
-      bg:     "oklch(0.65 0.2 25 / 0.08)",
+      bg: "oklch(0.65 0.2 25 / 0.08)",
       border: "oklch(0.65 0.2 25 / 0.28)",
-      icon:   "var(--color-danger, #ef4444)",
-      text:   "var(--color-danger, #ef4444)",
+      icon: "var(--color-danger, #ef4444)",
+      text: "var(--color-danger, #ef4444)",
     };
     case "warning": return {
-      bg:     "oklch(0.75 0.18 55 / 0.08)",
+      bg: "oklch(0.75 0.18 55 / 0.08)",
       border: "oklch(0.75 0.18 55 / 0.28)",
-      icon:   "var(--color-warning, #f59e0b)",
-      text:   "var(--color-warning, #f59e0b)",
+      icon: "var(--color-warning, #f59e0b)",
+      text: "var(--color-warning, #f59e0b)",
     };
     default: return {
-      bg:     "oklch(0.6 0 0 / 0.06)",
+      bg: "oklch(0.6 0 0 / 0.06)",
       border: "oklch(0.4 0 0 / 0.25)",
-      icon:   "oklch(0.6 0 0)",
-      text:   "oklch(0.6 0 0)",
+      icon: "oklch(0.6 0 0)",
+      text: "oklch(0.6 0 0)",
     };
   }
 }
@@ -48,10 +48,10 @@ function SeverityIcon({ severity, size = 15 }: { severity: string; size?: number
   const colors = severityColors(severity);
   const style = { color: colors.icon, flexShrink: 0 as const };
   switch (severity) {
-    case "bullish": return <TrendingUp  size={size} style={style} />;
+    case "bullish": return <TrendingUp size={size} style={style} />;
     case "bearish": return <TrendingDown size={size} style={style} />;
     case "warning": return <AlertTriangle size={size} style={style} />;
-    default:        return <Minus size={size} style={style} />;
+    default: return <Minus size={size} style={style} />;
   }
 }
 
@@ -66,15 +66,26 @@ function CrossTag({ period }: { period: number }) {
 function CrossCard({ cross }: { cross: EmaCrossover }) {
   const isBullish = cross.direction === "bullish";
   const c = severityColors(isBullish ? "bullish" : "bearish");
+
+  // VERIFICACIÓN: ¿Es un Golden o Death Cross? (EMA 50 y EMA 200)
+  const isMajorCross = cross.fastPeriod === 50 && cross.slowPeriod === 200;
+
   const whenStr =
     cross.daysAgo === 0 ? "Hoy"
-    : cross.daysAgo === 1 ? "Hace 1 día"
-    : `Hace ${cross.daysAgo} días`;
+      : cross.daysAgo === 1 ? "Hace 1 día"
+        : `Hace ${cross.daysAgo} días`;
+
+  // Título personalizado si es un cruce mayor
+  const title = isMajorCross
+    ? (isBullish ? "🌟 GOLDEN CROSS" : "⚠️ DEATH CROSS")
+    : (isBullish ? "Cruce alcista" : "Cruce bajista");
 
   return (
     <div style={{
-      border: `1px solid ${c.border}`,
+      // Bordes y sombras destacadas si es un cruce mayor
+      border: isMajorCross ? `2px solid ${c.icon}` : `1px solid ${c.border}`,
       background: c.bg,
+      boxShadow: isMajorCross ? `0 0 15px ${c.icon}40` : "none", // Brillo exterior
       borderRadius: 8,
       padding: "10px 14px",
       display: "flex",
@@ -82,21 +93,39 @@ function CrossCard({ cross }: { cross: EmaCrossover }) {
       gap: 4,
       flex: 1,
       minWidth: 160,
+      position: "relative",
+      overflow: "hidden"
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+
+      {/* Fondo degradado sutil para cruces mayores */}
+      {isMajorCross && (
+        <div style={{
+          position: "absolute",
+          top: 0, left: 0, right: 0, height: "100%",
+          background: `linear-gradient(45deg, transparent, ${c.icon}15)`,
+          pointerEvents: "none"
+        }} />
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
         {isBullish
-          ? <TrendingUp  size={13} style={{ color: c.icon, flexShrink: 0 }} />
+          ? <TrendingUp size={13} style={{ color: c.icon, flexShrink: 0 }} />
           : <TrendingDown size={13} style={{ color: c.icon, flexShrink: 0 }} />}
-        <span style={{ color: c.text, fontSize: 12, fontWeight: 600 }}>
-          {isBullish ? "Cruce alcista" : "Cruce bajista"}
+        <span style={{
+          color: c.text,
+          fontSize: isMajorCross ? 13 : 12,
+          fontWeight: isMajorCross ? 800 : 600,
+          letterSpacing: isMajorCross ? "0.03em" : "normal"
+        }}>
+          {title}
         </span>
       </div>
-      <div style={{ fontSize: 12, color: "oklch(0.7 0 0)", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+      <div style={{ fontSize: 12, color: "oklch(0.7 0 0)", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", position: "relative" }}>
         <CrossTag period={cross.fastPeriod} />
         <span style={{ color: "oklch(0.5 0 0)" }}>{isBullish ? "↑ sobre" : "↓ bajo"}</span>
         <CrossTag period={cross.slowPeriod} />
       </div>
-      <div style={{ fontSize: 11, color: "oklch(0.5 0 0)", marginTop: 2 }}>
+      <div style={{ fontSize: 11, color: "oklch(0.5 0 0)", marginTop: 2, position: "relative" }}>
         {cross.date} · {whenStr}
       </div>
     </div>
