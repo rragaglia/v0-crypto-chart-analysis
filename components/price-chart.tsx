@@ -42,15 +42,15 @@ function renderCrossoverMarker(
   slowPeriod: number,
   isRecent: boolean   // true = most recent cross (full opacity); false = older (dimmer)
 ) {
-  const color  = isBullish ? "#22c55e" : "#ef4444";
+  const color = isBullish ? "#22c55e" : "#ef4444";
   const opacity = isRecent ? 1 : 0.5;
-  const arrow   = isBullish ? "↑" : "↓";
-  const label   = `${arrow} ${fastPeriod}/${slowPeriod}`;
+  const arrow = isBullish ? "↑" : "↓";
+  const label = `${arrow} ${fastPeriod}/${slowPeriod}`;
   // Place pill above for bullish, below for bearish so it doesn't overlap the cross itself
   const pillOffsetY = isBullish ? -24 : 24;
-  const pillY       = cy + pillOffsetY;
-  const pillW       = 40;
-  const pillH       = 15;
+  const pillY = cy + pillOffsetY;
+  const pillW = 40;
+  const pillH = 15;
 
   return (
     <g opacity={opacity} style={{ pointerEvents: "none" }}>
@@ -111,15 +111,15 @@ export function PriceChart({
         timestamp: point.timestamp,
         price: point.price,
       };
-      if (emaMap[20]?.get(point.timestamp))  entry.ema20  = emaMap[20].get(point.timestamp);
-      if (emaMap[50]?.get(point.timestamp))  entry.ema50  = emaMap[50].get(point.timestamp);
+      if (emaMap[20]?.get(point.timestamp)) entry.ema20 = emaMap[20].get(point.timestamp);
+      if (emaMap[50]?.get(point.timestamp)) entry.ema50 = emaMap[50].get(point.timestamp);
       if (emaMap[100]?.get(point.timestamp)) entry.ema100 = emaMap[100].get(point.timestamp);
       if (emaMap[200]?.get(point.timestamp)) entry.ema200 = emaMap[200].get(point.timestamp);
       return entry;
     });
   }, [pricePoints, emaMap]);
 
-  // Resolve each crossover to {date (x-axis key), y (EMA intersection value)}
+  // Resolve each crossover to {date, timestamp (x-axis key), y (EMA intersection value)}
   const crossoverMarkers = useMemo(() => {
     if (!crossovers.length || !chartData.length) return [];
 
@@ -141,6 +141,7 @@ export function PriceChart({
 
       return {
         date: closest.date,
+        timestamp: closest.timestamp, // Pasamos el timestamp para guiar al ReferenceDot
         y,
         isBullish: cross.direction === "bullish",
         fastPeriod: cross.fastPeriod,
@@ -165,13 +166,22 @@ export function PriceChart({
               // Extra top margin so bullish labels above chart don't clip
               margin={{ top: 28, right: 10, left: 10, bottom: 5 }}
             >
+              {/* EJE X: Convertido a escala numérica basada en el Timestamp */}
               <XAxis
-                dataKey="date"
+                dataKey="timestamp"
+                type="number"
+                domain={['dataMin', 'dataMax']}
                 tick={{ fill: "oklch(0.6 0 0)", fontSize: 11 }}
                 tickLine={false}
                 axisLine={{ stroke: "oklch(0.25 0.005 260)" }}
-                interval="preserveStartEnd"
                 minTickGap={50}
+                tickFormatter={(val: number) => {
+                  // Buscamos la fecha en el array para renderizar el texto legible ("19 ene")
+                  const pt = chartData.find(p => p.timestamp === val);
+                  if (pt) return pt.date;
+                  const d = new Date(val);
+                  return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
+                }}
               />
               <YAxis
                 tick={{ fill: "oklch(0.6 0 0)", fontSize: 11 }}
@@ -195,6 +205,13 @@ export function PriceChart({
                   formatPrice(value),
                   name === "price" ? "Precio" : name.toUpperCase().replace("EMA", "EMA "),
                 ]}
+                // Se reemplaza el título numérico del tooltip por la fecha real
+                labelFormatter={(label: number) => {
+                  const pt = chartData.find(p => p.timestamp === label);
+                  if (pt) return pt.date;
+                  const d = new Date(label);
+                  return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
+                }}
                 labelStyle={{ color: "oklch(0.6 0 0)" }}
               />
               <Legend
@@ -212,22 +229,18 @@ export function PriceChart({
               />
 
               {/* Price + EMA lines */}
-              <Line type="monotone" dataKey="price"  stroke="oklch(0.95 0 0)"      strokeWidth={2}   dot={false} name="price"  />
-              <Line type="monotone" dataKey="ema20"  stroke="oklch(0.72 0.19 165)" strokeWidth={1.5} dot={false} name="ema20"  />
-              <Line type="monotone" dataKey="ema50"  stroke="oklch(0.7 0.15 250)"  strokeWidth={1.5} dot={false} name="ema50"  />
-              <Line type="monotone" dataKey="ema100" stroke="oklch(0.75 0.18 55)"  strokeWidth={1.5} dot={false} name="ema100" />
-              <Line type="monotone" dataKey="ema200" stroke="oklch(0.65 0.2 25)"   strokeWidth={1.5} dot={false} name="ema200" />
+              <Line type="monotone" dataKey="price" stroke="oklch(0.95 0 0)" strokeWidth={2} dot={false} name="price" />
+              <Line type="monotone" dataKey="ema20" stroke="oklch(0.72 0.19 165)" strokeWidth={1.5} dot={false} name="ema20" />
+              <Line type="monotone" dataKey="ema50" stroke="oklch(0.7 0.15 250)" strokeWidth={1.5} dot={false} name="ema50" />
+              <Line type="monotone" dataKey="ema100" stroke="oklch(0.75 0.18 55)" strokeWidth={1.5} dot={false} name="ema100" />
+              <Line type="monotone" dataKey="ema200" stroke="oklch(0.65 0.2 25)" strokeWidth={1.5} dot={false} name="ema200" />
 
-              {/*
-                Crossover markers.
-                IMPORTANT: shape MUST be a function — passing a JSX element does not
-                receive cx/cy from Recharts correctly. The function form is called with
-                {cx, cy, r, ...} injected by Recharts.
-              */}
+              {/* Crossover markers. */}
               {crossoverMarkers.map((m, i) => (
                 <ReferenceDot
                   key={`cross-${i}`}
-                  x={m.date}
+                  // AHORA el punto se ancla usando el timestamp exacto
+                  x={m.timestamp}
                   y={m.y}
                   r={5}
                   fill="transparent"
