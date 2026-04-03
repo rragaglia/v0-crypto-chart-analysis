@@ -146,32 +146,6 @@ export function EmaTable({ analyses, summary }: EmaTableProps) {
         </CardContent>
       </Card>
 
-      {/* Summary Card */}
-      <Card
-        className={`border-2 ${
-          summary.severity === "bullish"
-            ? "border-success/30"
-            : summary.severity === "bearish"
-            ? "border-danger/30"
-            : summary.severity === "warning"
-            ? "border-warning/30"
-            : "border-muted-foreground/30"
-        }`}
-      >
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold">
-              Resumen General
-            </CardTitle>
-            <SeverityBadge severity={summary.severity} label={summary.label} />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-sm leading-relaxed">
-            {summary.description}
-          </p>
-        </CardContent>
-      </Card>
     </div>
   );
 }
