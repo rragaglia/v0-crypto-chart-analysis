@@ -46,10 +46,9 @@ export function CryptoDashboard() {
     { revalidateOnFocus: false, dedupingInterval: 300000, keepPreviousData: false, errorRetryCount: 2, errorRetryInterval: 3000 }
   );
 
-  const handleCoinChange = useCallback((coinId: string) => { setSelectedCoin(coinId); }, []);
-  const handleRefresh    = useCallback(() => { mutate(); }, [mutate]);
+  const handleCoinChange = useCallback((coinId: string) => setSelectedCoin(coinId), []);
+  const handleRefresh    = useCallback(() => mutate(), [mutate]);
 
-  /** Called when a coin name in the Favorites tab is clicked */
   const handleSelectFromFavorites = useCallback((coinId: string) => {
     setSelectedCoin(coinId);
     setActiveTab("analysis");
@@ -63,7 +62,6 @@ export function CryptoDashboard() {
     }
 
     const { pricePoints, emas } = processEmaData(marketData.prices);
-
     if (pricePoints.length === 0) {
       return { pricePoints: [], emas: [], analyses: [], summary: null, currentPrice: 0, dataWarning: "No se pudieron procesar los datos de precio.", crossoverData: null };
     }
@@ -99,12 +97,8 @@ export function CryptoDashboard() {
               </div>
             </div>
             <TabsList>
-              <TabsTrigger value="analysis" className="gap-1.5">
-                <BarChart3 className="size-3.5" />Analisis
-              </TabsTrigger>
-              <TabsTrigger value="favorites" className="gap-1.5">
-                <Star className="size-3.5" />Favoritos
-              </TabsTrigger>
+              <TabsTrigger value="analysis" className="gap-1.5"><BarChart3 className="size-3.5" />Analisis</TabsTrigger>
+              <TabsTrigger value="favorites" className="gap-1.5"><Star className="size-3.5" />Favoritos</TabsTrigger>
             </TabsList>
           </div>
         </div>
@@ -134,7 +128,8 @@ export function CryptoDashboard() {
         </div>
 
         <main className="mx-auto max-w-7xl px-4 py-4 flex flex-col gap-6">
-          {/* Price banner */}
+
+          {/* Price banner — coin name, price, source badge only (summary label moved to panel) */}
           {selectedCoinData && currentPrice > 0 && (
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-3">
@@ -144,18 +139,6 @@ export function CryptoDashboard() {
                   <p className="text-sm text-muted-foreground">{selectedCoinData.name} ({selectedCoinData.symbol})</p>
                 </div>
               </div>
-              {summary && (
-                <Badge variant="outline" className={`text-sm px-3 py-1.5 ${
-                  summary.severity === "bullish" ? "bg-success/10 text-success border-success/30"
-                  : summary.severity === "bearish" ? "bg-danger/10 text-danger border-danger/30"
-                  : summary.severity === "warning" ? "bg-warning/10 text-warning border-warning/30"
-                  : "bg-muted-foreground/10 text-muted-foreground border-muted-foreground/30"
-                }`}>
-                  {summary.severity === "bullish" ? <TrendingUp className="size-4 mr-1" />
-                   : summary.severity === "bearish" ? <TrendingDown className="size-4 mr-1" /> : null}
-                  {summary.label}
-                </Badge>
-              )}
               {marketData?.source && (
                 <Badge variant="outline" className="text-xs px-2 py-1 bg-muted/30 text-muted-foreground border-muted-foreground/20">
                   <Database className="size-3 mr-1" />
@@ -165,28 +148,28 @@ export function CryptoDashboard() {
             </div>
           )}
 
+          {/* Errors */}
           {hasError && (
             <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger text-sm">
               Error al cargar datos. Puede ser un limite de la API de CoinGecko (gratuita). Intenta de nuevo en unos segundos.
               <button onClick={handleRefresh} className="ml-2 underline hover:no-underline">Reintentar</button>
             </div>
           )}
-
           {dataWarning && !hasError && (
             <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 text-warning text-sm">{dataWarning}</div>
           )}
 
-          {/* EMA Crossover panel — shown when we have data */}
-          {!isMarketLoading && crossoverData && (
-            <EmaCrossoverPanel data={crossoverData} />
+          {/* ── Unified analysis panel: Resumen + Cruces + Conclusión ── */}
+          {!isMarketLoading && (crossoverData || summary) && (
+            <EmaCrossoverPanel data={crossoverData} summary={summary} />
           )}
 
           {/* Chart */}
           {isMarketLoading ? <ChartSkeleton />
-           : pricePoints.length > 0 ? <PriceChart pricePoints={pricePoints} emas={emas} coinName={selectedCoinData?.name || selectedCoin} />
+           : pricePoints.length > 0 ? <PriceChart pricePoints={pricePoints} emas={emas} coinName={selectedCoinData?.name || selectedCoin} crossovers={crossoverData?.crossovers ?? []} />
            : null}
 
-          {/* Table */}
+          {/* Table — summary card removed from here, now lives in the panel above */}
           {isMarketLoading ? <TableSkeleton />
            : analyses.length > 0 && summary ? <EmaTable analyses={analyses} summary={summary} />
            : null}
