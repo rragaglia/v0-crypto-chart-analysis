@@ -121,25 +121,19 @@ export function CryptoDashboard() {
 
           {!isMarketLoading && (crossoverData || summary) && <EmaCrossoverPanel data={crossoverData} summary={summary} />}
 
-          {isMarketLoading ? <ChartSkeleton /> : pricePoints.length > 0 && <PriceChart pricePoints={pricePoints} emas={emas} coinName={selectedCoinData?.name || selectedCoin} crossovers={crossoverData?.crossovers ?? []} />}
-
-          {isMarketLoading ? <TableSkeleton /> : analyses.length > 0 && summary && <EmaTable analyses={analyses} summary={summary} />}
-
-          {/* ── SECCIÓN DE PUNTAJES (MOMENTUM) ── */}
+          {/* ── SECCIÓN DE PUNTAJES (MOMENTUM) MOVIDA ARRIBA DEL GRÁFICO ── */}
           {!isMarketLoading && emas.length > 0 && (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between px-1">
                 <h3 className="text-sm font-semibold text-foreground">Score de Momentum (Basado en Pendiente)</h3>
                 <div className="text-sm font-bold px-3 py-1 bg-primary/10 text-primary rounded-full border border-primary/20 shadow-sm">
-                  Puntaje Total: {emas.reduce((acc, ema) => acc + ema.score, 0)} pts
+                  Puntaje Total: {emas.reduce((acc, ema) => acc + (ema.score || 0), 0)} pts
                 </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {emas.map((ema) => {
-                  const isPositive = ema.score >= 0;
-
-                  // Calculamos la opacidad del fondo en base a la magnitud del score
-                  const magnitude = Math.min(Math.abs(ema.score), 25);
+                  const isPositive = (ema.score || 0) >= 0;
+                  const magnitude = Math.min(Math.abs(ema.score || 0), 25);
                   const intensity = magnitude / 25;
 
                   const colorBase = isPositive ? "34, 197, 94" : "239, 68, 68";
@@ -154,22 +148,20 @@ export function CryptoDashboard() {
                     >
                       <div className="flex items-center justify-between relative z-10">
                         <span className="text-sm font-bold" style={{ color: ema.color }}>{ema.label}</span>
-                        {ema.score >= 0 ? (
+                        {(ema.score || 0) >= 0 ? (
                           <TrendingUp className="size-4" style={{ color: `rgb(${colorBase})` }} />
                         ) : (
                           <TrendingDown className="size-4" style={{ color: `rgb(${colorBase})` }} />
                         )}
                       </div>
 
-                      {/* Puntaje Principal y destacado */}
                       <div className="text-3xl font-black text-foreground mt-2 relative z-10 flex items-baseline gap-1">
-                        {ema.score > 0 ? "+" : ""}{ema.score}
+                        {(ema.score || 0) > 0 ? "+" : ""}{ema.score || 0}
                         <span className="text-xs font-medium opacity-60">pts</span>
                       </div>
 
-                      {/* Slope técnico secundario */}
                       <div className="text-[11px] opacity-60 relative z-10 font-mono mt-2 tracking-tight">
-                        Slope: {ema.slopeDailyPct > 0 ? "+" : ""}{ema.slopeDailyPct.toFixed(3)}%/día
+                        Slope: {(ema.slopeDailyPct || 0) > 0 ? "+" : ""}{(ema.slopeDailyPct || 0).toFixed(3)}%/día
                       </div>
                     </div>
                   );
@@ -177,6 +169,11 @@ export function CryptoDashboard() {
               </div>
             </div>
           )}
+
+          {/* Gráfico y Tabla a continuación */}
+          {isMarketLoading ? <ChartSkeleton /> : pricePoints.length > 0 && <PriceChart pricePoints={pricePoints} emas={emas} coinName={selectedCoinData?.name || selectedCoin} crossovers={crossoverData?.crossovers ?? []} />}
+
+          {isMarketLoading ? <TableSkeleton /> : analyses.length > 0 && summary && <EmaTable analyses={analyses} summary={summary} />}
 
         </main>
       </TabsContent>

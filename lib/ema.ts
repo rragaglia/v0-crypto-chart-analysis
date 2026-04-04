@@ -22,13 +22,13 @@ export interface EmaAnalysis {
   percentageDiff: number;
   position: "above" | "below";
   characteristic: string;
-  severity: "bullish" | "warning" | "bearish" | "neutral";
+  severity: "bullish" | "neutral-bullish" | "warning" | "bearish" | "neutral";
 }
 
 export interface MarketSummary {
   label: string;
   description: string;
-  severity: "bullish" | "warning" | "bearish" | "neutral";
+  severity: "bullish" | "neutral-bullish" | "warning" | "bearish" | "neutral";
 }
 
 export function calculateEMA(
@@ -67,35 +67,35 @@ const EMA_CONFIGS = [
 // exactamente con los de tu imagen.
 function getEmaScore(period: number, slopePct: number): number {
   if (period === 20) {
-    if (slopePct >= 0.5) return 10;
-    if (slopePct >= 0.2) return 5;
+    if (slopePct >= 1) return 10;
+    if (slopePct >= 0.4) return 5;
     if (slopePct > 0) return 2;
-    if (slopePct <= -0.5) return -10;
-    if (slopePct <= -0.2) return -5;
+    if (slopePct <= -1) return -10;
+    if (slopePct <= -0.4) return -5;
     return -2; // slope < 0
   }
   else if (period === 50) {
-    if (slopePct >= 0.5) return 15;
-    if (slopePct >= 0.2) return 8;
+    if (slopePct >= 0.75) return 15;
+    if (slopePct >= 0.28) return 8;
     if (slopePct > 0) return 3;
-    if (slopePct <= -0.5) return -15;
-    if (slopePct <= -0.2) return -8;
+    if (slopePct <= -0.75) return -15;
+    if (slopePct <= -0.28) return -8;
     return -3;
   }
   else if (period === 100) {
-    if (slopePct >= 0.5) return 20;
+    if (slopePct >= 0.55) return 20;
     if (slopePct >= 0.2) return 10;
     if (slopePct > 0) return 4;
-    if (slopePct <= -0.5) return -20;
+    if (slopePct <= -0.55) return -20;
     if (slopePct <= -0.2) return -10;
     return -4;
   }
   else if (period === 200) {
-    if (slopePct >= 0.5) return 25;
-    if (slopePct >= 0.2) return 15;
+    if (slopePct >= 0.42) return 25;
+    if (slopePct >= 0.15) return 15;
     if (slopePct > 0) return 5;
-    if (slopePct <= -0.5) return -25;
-    if (slopePct <= -0.2) return -15;
+    if (slopePct <= -0.42) return -25;
+    if (slopePct <= -0.15) return -15;
     return -5;
   }
   return 0;
@@ -171,7 +171,7 @@ export function analyzeEmas(
     const position = currentPrice >= ema.currentValue ? "above" : "below";
 
     let characteristic: string;
-    let severity: "bullish" | "warning" | "bearish" | "neutral";
+    let severity: "bullish" | "neutral-bullish" | "warning" | "bearish" | "neutral";
     const absPct = Math.abs(percentageDiff);
 
     if (ema.type === "lenta") {
@@ -188,7 +188,10 @@ export function analyzeEmas(
       if (position === "above") {
         if (absPct > 20) { characteristic = "Sobrecompra extrema"; severity = "warning"; }
         else if (absPct > 5) { characteristic = "Momentum alcista"; severity = "bullish"; }
-        else { characteristic = "Tendencia neutral-alcista"; severity = "neutral"; }
+        else {
+          characteristic = "Tendencia neutral-alcista";
+          severity = "neutral-bullish"; // <-- NUEVA SEVERIDAD APLICADA AQUÍ
+        }
       } else {
         if (absPct > 20) { characteristic = "Caida plena / Crash"; severity = "bearish"; }
         else if (absPct > 5) { characteristic = "Correccion activa"; severity = "bearish"; }

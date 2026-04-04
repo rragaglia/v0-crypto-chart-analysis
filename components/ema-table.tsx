@@ -32,6 +32,13 @@ function SeverityBadge({ severity, label }: { severity: string; label: string })
       className: "bg-success/15 text-success border-success/30",
       icon: <TrendingUp className="size-3" />,
     },
+    // NUEVA CONFIGURACIÓN LIMA:
+    "neutral-bullish": {
+      // Usamos estilos inline para forzar el color lima si no tienes una clase tailwind específica para él
+      className: "border-[#a3e635]/30",
+      icon: <TrendingUp className="size-3" style={{ color: "#a3e635" }} />,
+      style: { backgroundColor: "rgba(163, 230, 53, 0.15)", color: "#a3e635" }
+    },
     bearish: {
       className: "bg-danger/15 text-danger border-danger/30",
       icon: <TrendingDown className="size-3" />,
@@ -49,7 +56,7 @@ function SeverityBadge({ severity, label }: { severity: string; label: string })
   const c = config[severity] || config.neutral;
 
   return (
-    <Badge variant="outline" className={c.className}>
+    <Badge variant="outline" className={c.className} style={c.style}>
       {c.icon}
       {label}
     </Badge>
@@ -123,11 +130,10 @@ export function EmaTable({ analyses, summary }: EmaTableProps) {
                   </TableCell>
                   <TableCell className="text-right">
                     <span
-                      className={`font-mono text-sm font-semibold ${
-                        analysis.position === "above"
+                      className={`font-mono text-sm font-semibold ${analysis.position === "above"
                           ? "text-success"
                           : "text-danger"
-                      }`}
+                        }`}
                     >
                       {analysis.position === "above" ? "+" : ""}
                       {analysis.percentageDiff.toFixed(2)}%
@@ -145,7 +151,6 @@ export function EmaTable({ analyses, summary }: EmaTableProps) {
           </Table>
         </CardContent>
       </Card>
-
     </div>
   );
 }
