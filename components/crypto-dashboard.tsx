@@ -154,7 +154,7 @@ export function CryptoDashboard() {
               <div className="flex items-center justify-between px-1">
                 <h3 className="text-sm font-semibold text-foreground">Score de Momentum (Basado en Pendiente)</h3>
                 <div className="text-sm font-bold px-3 py-1 bg-primary/10 text-primary rounded-full border border-primary/20 shadow-sm flex items-center gap-1">
-                  Puntaje Total: {emas.reduce((acc, ema) => acc + (ema.score || 0), 0)} <span className="opacity-60 text-xs">/ {TOTAL_MAX_SCORE} pts</span>
+                  Puntaje Total: {emas.reduce((acc, ema) => acc + (ema.score || 0), 0)} <span className="opacity-60 text-xs">/ ± {TOTAL_MAX_SCORE} pts</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
