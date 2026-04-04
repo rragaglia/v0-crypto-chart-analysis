@@ -101,6 +101,8 @@ function SeverityIcon({ severity }: { severity: string }) {
   switch (severity) {
     case "bullish":
       return <TrendingUp className="size-3.5" />;
+    case "neutral-bullish": // NUEVO ICONO LIMA AÑADIDO AQUÍ
+      return <TrendingUp className="size-3.5 text-[#a3e635]" />;
     case "bearish":
       return <TrendingDown className="size-3.5" />;
     case "warning":
@@ -114,6 +116,8 @@ function severityColor(severity: string) {
   switch (severity) {
     case "bullish":
       return "bg-success/15 text-success border-success/30";
+    case "neutral-bullish": // NUEVO ESTADO LIMA AÑADIDO AQUÍ
+      return "bg-[#a3e635]/15 text-[#a3e635] border-[#a3e635]/30";
     case "bearish":
       return "bg-danger/15 text-danger border-danger/30";
     case "warning":
