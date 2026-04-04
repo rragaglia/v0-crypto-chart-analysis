@@ -203,34 +203,81 @@ export function analyzeEmas(
   });
 }
 
-export function getMarketSummary(analyses: EmaAnalysis[]): MarketSummary {
-  if (analyses.length === 0) return { label: "Datos insuficientes", description: "No hay suficientes datos", severity: "neutral" };
-  const [ema20, ema50, ema100, ema200] = [20, 50, 100, 200].map(p => analyses.find((a) => a.ema.period === p));
-
-  if (!ema100 && !ema200) {
-    if (!ema20 && !ema50) return { label: "Datos insuficientes", description: "Sin datos", severity: "neutral" };
-    const allAbove = analyses.every((a) => a.position === "above");
-    if (allAbove) return { label: "Tendencia alcista (corto plazo)", description: "Precio sobre EMAs", severity: "bullish" };
-    return { label: "Tendencia bajista (corto plazo)", description: "Precio bajo EMAs", severity: "bearish" };
+export function getMarketSummary(
+  analyses: EmaAnalysis[],
+  emas: EmaData[],
+  crossoverData: CrossoverConclusion | null,
+  currentPrice: number
+): MarketSummary {
+  if (analyses.length === 0 || emas.length === 0) {
+    return {
+      label: "Datos insuficientes",
+      description: "No hay suficientes datos históricos para calcular un resumen.",
+      severity: "neutral",
+    };
   }
 
-  if (ema20 && ema50 && ema100 && ema200) {
-    const allAbove = analyses.every((a) => a.position === "above");
-    const allBelow = analyses.every((a) => a.position === "below");
-    const fastAbove = ema20.position === "above" && ema50.position === "above";
-    const slowBelow = ema100.position === "below" && ema200.position === "below";
+  // 1. Analizar el Momentum Score Total
+  const totalScore = emas.reduce((acc, ema) => acc + (ema.score || 0), 0);
 
-    if (allAbove && ema200.percentageDiff > 30) return { label: "Euforia", description: "Sobrecalentado", severity: "warning" };
-    if (allAbove) return { label: "Bull Market", description: "Tendencia alcista confirmada", severity: "bullish" };
-    if (allBelow && Math.abs(ema200.percentageDiff) > 30) return { label: "Capitulacion", description: "Suelo posible", severity: "bearish" };
-    if (allBelow) return { label: "Bear Market", description: "Tendencia bajista", severity: "bearish" };
-    if (fastAbove && slowBelow) return { label: "Recuperacion", description: "Posible inicio", severity: "warning" };
-    return { label: "Mercado mixto", description: "Señales mixtas", severity: "neutral" };
+  let scoreText = "";
+  let severity: "bullish" | "neutral-bullish" | "warning" | "bearish" | "neutral" = "neutral";
+  let label = "Mercado Mixto";
+
+  if (totalScore >= 40) {
+    label = "Fuerte Momentum Alcista";
+    severity = "bullish";
+    scoreText = `El activo presenta una fuerza alcista contundente con un excelente momentum general (${totalScore} pts). Las pendientes de las medias móviles sugieren que los compradores tienen el control absoluto.`;
+  } else if (totalScore > 10) {
+    label = "Tendencia Alcista Moderada";
+    severity = "neutral-bullish";
+    scoreText = `El momentum general es positivo (${totalScore} pts), indicando una inclinación alcista en desarrollo. La estructura de precios es favorable.`;
+  } else if (totalScore < -40) {
+    label = "Fuerte Momentum Bajista";
+    severity = "bearish";
+    scoreText = `La presión de venta es severa y el momentum es marcadamente negativo (${totalScore} pts). Las medias móviles apuntan agresivamente a la baja.`;
+  } else if (totalScore < -10) {
+    label = "Tendencia Bajista Moderada";
+    severity = "warning";
+    scoreText = `El activo muestra debilidad general con un momentum negativo (${totalScore} pts). Los vendedores mantienen el dominio a corto plazo.`;
+  } else {
+    label = "Fase de Consolidación / Lateralidad";
+    severity = "neutral";
+    scoreText = `El mercado no muestra una dirección tendencial clara en este momento, con un momentum prácticamente neutro (${totalScore} pts). Es probable que el activo se encuentre en rango.`;
   }
 
-  const aboveCount = analyses.filter((a) => a.position === "above").length;
-  if (aboveCount > analyses.length / 2) return { label: "Tendencia alcista (parcial)", description: "Alcista", severity: "bullish" };
-  return { label: "Tendencia bajista (parcial)", description: "Bajista", severity: "bearish" };
+  // 2. Analizar la distancia a la EMA más cercana (Soporte o Resistencia dinámica)
+  let nearestEmaText = "";
+  if (analyses.length > 0) {
+    // Ordenamos para encontrar la EMA con la diferencia porcentual más cercana a 0
+    const nearest = [...analyses].sort((a, b) => Math.abs(a.percentageDiff) - Math.abs(b.percentageDiff))[0];
+    const isSupport = nearest.position === "above";
+    const dist = Math.abs(nearest.percentageDiff).toFixed(2);
+
+    nearestEmaText = `Actualmente, el precio interactúa a solo un ${dist}% de distancia de la ${nearest.ema.label}, nivel que está actuando como ${isSupport ? "soporte dinámico" : "resistencia dinámica"} inmediato.`;
+
+    // Añadimos contexto si está muy lejos de todas (sobrecompra/sobreventa)
+    if (Math.abs(nearest.percentageDiff) > 15) {
+      nearestEmaText = `El precio se encuentra extendido, cotizando a más de un ${dist}% de su media más cercana (${nearest.ema.label}), lo que sugiere un escenario de ${isSupport ? "sobrecompra" : "sobreventa"} a corto plazo.`;
+    }
+  }
+
+  // 3. Analizar los cruces recientes (contexto adicional)
+  let crossoverText = "";
+  if (crossoverData && crossoverData.crossovers.length > 0) {
+    const latestCross = crossoverData.crossovers[0];
+    // Solo mencionamos cruces que hayan ocurrido hace menos de 15 días para mantener la relevancia
+    if (latestCross.daysAgo <= 15) {
+      const crossType = latestCross.direction === "bullish" ? "alcista" : "bajista";
+      const when = latestCross.daysAgo === 0 ? "hoy mismo" : latestCross.daysAgo === 1 ? "ayer" : `hace ${latestCross.daysAgo} días`;
+      crossoverText = `A esto se le suma un reciente cruce ${crossType} detectado entre la EMA ${latestCross.fastPeriod} y la EMA ${latestCross.slowPeriod} ocurrido ${when}, validando la acción del precio.`;
+    }
+  }
+
+  // Unir los 3 bloques en un texto cohesivo y natural
+  const description = `${scoreText} ${nearestEmaText} ${crossoverText}`.trim();
+
+  return { label, description, severity };
 }
 
 export function formatPrice(price: number): string {

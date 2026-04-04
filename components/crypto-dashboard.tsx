@@ -30,6 +30,17 @@ const TIMEFRAMES = [
   { value: "max", label: "Maximo" },
 ];
 
+// Mapeo de puntajes máximos posibles por cada período de EMA
+const MAX_SCORES: Record<number, number> = {
+  20: 10,
+  50: 15,
+  100: 20,
+  200: 25,
+};
+
+// Puntaje máximo total sumando todas las EMAs (10 + 15 + 20 + 25 = 70)
+const TOTAL_MAX_SCORE = 70;
+
 export function CryptoDashboard() {
   const [selectedCoin, setSelectedCoin] = useState("bitcoin");
   const [days, setDays] = useState("365");
@@ -61,9 +72,15 @@ export function CryptoDashboard() {
     }
 
     const currentPrice = pricePoints[pricePoints.length - 1]?.price || 0;
+
+    // ORDEN CAMBIADO AQUÍ: 
+    // 1. Calculamos los análisis individuales
     const analyses = analyzeEmas(currentPrice, emas);
-    const summary = getMarketSummary(analyses);
+    // 2. Calculamos los cruces primero
     const crossoverData = detectEmaCrossovers(pricePoints, emas);
+    // 3. Le pasamos toda esa data al resumen general para que hable de ello
+    const summary = getMarketSummary(analyses, emas, crossoverData, currentPrice);
+
     const missingEmas = [20, 50, 100, 200].filter((p) => !emas.find((e) => e.period === p));
     const dataWarning = missingEmas.length > 0 ? `Faltan datos para EMA ${missingEmas.join(", ")}.` : null;
 
@@ -117,7 +134,6 @@ export function CryptoDashboard() {
                 </div>
               </div>
 
-              {/* ACÁ ESTÁ RECUPERADA LA ETIQUETA DE FUENTE DE DATOS */}
               {marketData?.source && (
                 <Badge variant="outline" className="text-xs px-2 py-1 bg-muted/30 text-muted-foreground border-muted-foreground/20">
                   <Database className="size-3 mr-1" />
@@ -137,15 +153,18 @@ export function CryptoDashboard() {
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between px-1">
                 <h3 className="text-sm font-semibold text-foreground">Score de Momentum (Basado en Pendiente)</h3>
-                <div className="text-sm font-bold px-3 py-1 bg-primary/10 text-primary rounded-full border border-primary/20 shadow-sm">
-                  Puntaje Total: {emas.reduce((acc, ema) => acc + (ema.score || 0), 0)} pts
+                <div className="text-sm font-bold px-3 py-1 bg-primary/10 text-primary rounded-full border border-primary/20 shadow-sm flex items-center gap-1">
+                  Puntaje Total: {emas.reduce((acc, ema) => acc + (ema.score || 0), 0)} <span className="opacity-60 text-xs">/ {TOTAL_MAX_SCORE} pts</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {emas.map((ema) => {
                   const isPositive = (ema.score || 0) >= 0;
-                  const magnitude = Math.min(Math.abs(ema.score || 0), 25);
-                  const intensity = magnitude / 25;
+                  const maxScore = MAX_SCORES[ema.period] || 0;
+                  const magnitude = Math.min(Math.abs(ema.score || 0), maxScore);
+
+                  // Evitamos dividir por cero en caso de un periodo no mapeado
+                  const intensity = maxScore > 0 ? magnitude / maxScore : 0;
 
                   const colorBase = isPositive ? "34, 197, 94" : "239, 68, 68";
                   const bgGradient = `linear-gradient(135deg, rgba(${colorBase}, ${0.05 + intensity * 0.25}) 0%, rgba(${colorBase}, 0.02) 100%)`;
@@ -168,7 +187,9 @@ export function CryptoDashboard() {
 
                       <div className="text-3xl font-black text-foreground mt-2 relative z-10 flex items-baseline gap-1">
                         {(ema.score || 0) > 0 ? "+" : ""}{ema.score || 0}
-                        <span className="text-xs font-medium opacity-60">pts</span>
+                        {/* Aca agregamos el limite maximo de referencia */}
+                        <span className="text-base font-bold opacity-40 ml-1">/ {maxScore}</span>
+                        <span className="text-xs font-medium opacity-60 ml-1">pts</span>
                       </div>
 
                       <div className="text-[11px] opacity-60 relative z-10 font-mono mt-2 tracking-tight">
