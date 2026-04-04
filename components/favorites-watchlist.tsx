@@ -21,11 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+// ACA agregamos detectEmaCrossovers a las importaciones
 import {
   processEmaData,
   analyzeEmas,
   getMarketSummary,
   formatPrice,
+  detectEmaCrossovers,
 } from "@/lib/ema";
 import type { EmaAnalysis, MarketSummary } from "@/lib/ema";
 import {
@@ -256,7 +258,10 @@ export function FavoritesWatchlist({ coins, onSelectCoin }: { coins: Coin[] | un
 
       const currentPrice = pricePoints[pricePoints.length - 1]?.price || 0;
       const analyses = analyzeEmas(currentPrice, emas);
-      const summary = getMarketSummary(analyses);
+
+      // ACA ESTA LA SOLUCIÓN: calculamos cruces y le pasamos todo a la funcion actualizada
+      const crossoverData = detectEmaCrossovers(pricePoints, emas);
+      const summary = getMarketSummary(analyses, emas, crossoverData, currentPrice);
 
       return {
         coinId,
