@@ -105,6 +105,8 @@ export function CryptoDashboard() {
         </div>
 
         <main className="mx-auto max-w-7xl px-4 py-4 flex flex-col gap-6">
+
+          {/* Price banner */}
           {selectedCoinData && currentPrice > 0 && (
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-3">
@@ -114,6 +116,15 @@ export function CryptoDashboard() {
                   <p className="text-sm text-muted-foreground">{selectedCoinData.name} ({selectedCoinData.symbol})</p>
                 </div>
               </div>
+
+              {/* ACÁ ESTÁ RECUPERADA LA ETIQUETA DE FUENTE DE DATOS */}
+              {marketData?.source && (
+                <Badge variant="outline" className="text-xs px-2 py-1 bg-muted/30 text-muted-foreground border-muted-foreground/20">
+                  <Database className="size-3 mr-1" />
+                  {getSourceDisplayName(marketData.source)}
+                </Badge>
+              )}
+
             </div>
           )}
 
@@ -121,7 +132,7 @@ export function CryptoDashboard() {
 
           {!isMarketLoading && (crossoverData || summary) && <EmaCrossoverPanel data={crossoverData} summary={summary} />}
 
-          {/* ── SECCIÓN DE PUNTAJES (MOMENTUM) MOVIDA ARRIBA DEL GRÁFICO ── */}
+          {/* Score de Momentum */}
           {!isMarketLoading && emas.length > 0 && (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between px-1">
@@ -170,7 +181,7 @@ export function CryptoDashboard() {
             </div>
           )}
 
-          {/* Gráfico y Tabla a continuación */}
+          {/* Gráfico y Tabla */}
           {isMarketLoading ? <ChartSkeleton /> : pricePoints.length > 0 && <PriceChart pricePoints={pricePoints} emas={emas} coinName={selectedCoinData?.name || selectedCoin} crossovers={crossoverData?.crossovers ?? []} />}
 
           {isMarketLoading ? <TableSkeleton /> : analyses.length > 0 && summary && <EmaTable analyses={analyses} summary={summary} />}
