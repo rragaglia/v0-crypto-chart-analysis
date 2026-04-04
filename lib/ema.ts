@@ -11,6 +11,9 @@ export interface EmaData {
   label: string;
   color: string;
   type: "rapida" | "lenta";
+  // Agregamos los campos de pendiente (slope)
+  slope: number;
+  slopePercentage: number;
 }
 
 export interface EmaAnalysis {
@@ -91,13 +94,21 @@ export function processEmaData(
         }))
         .filter((v) => v.value > 0);
 
+      // Calculamos la pendiente (Slope) comparando el último valor con el anterior
+      const currentValue = emaValues[emaValues.length - 1] || 0;
+      const prevValue = emaValues[emaValues.length - 2] || currentValue;
+      const slope = currentValue - prevValue;
+      const slopePercentage = prevValue > 0 ? (slope / prevValue) * 100 : 0;
+
       return {
         period: config.period,
         values,
-        currentValue: emaValues[emaValues.length - 1] || 0,
+        currentValue,
         label: config.label,
         color: config.color,
         type: config.type,
+        slope,
+        slopePercentage,
       };
     })
     .filter((ema) => ema.currentValue > 0);
@@ -485,8 +496,8 @@ export function detectEmaCrossovers(
     latest.daysAgo === 0
       ? "hoy"
       : latest.daysAgo === 1
-      ? "hace 1 día"
-      : `hace ${latest.daysAgo} días`;
+        ? "hace 1 día"
+        : `hace ${latest.daysAgo} días`;
 
   // Gap between current price and the faster EMA of the latest cross
   let gapText = "";

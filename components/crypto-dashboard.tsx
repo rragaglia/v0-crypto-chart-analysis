@@ -23,17 +23,17 @@ const fetcher = async (url: string) => {
 };
 
 const TIMEFRAMES = [
-  { value: "90",  label: "90 dias"  },
+  { value: "90", label: "90 dias" },
   { value: "180", label: "180 dias" },
-  { value: "365", label: "1 ano"    },
-  { value: "730", label: "2 anos"   },
-  { value: "max", label: "Maximo"   },
+  { value: "365", label: "1 ano" },
+  { value: "730", label: "2 anos" },
+  { value: "max", label: "Maximo" },
 ];
 
 export function CryptoDashboard() {
   const [selectedCoin, setSelectedCoin] = useState("bitcoin");
-  const [days, setDays]                 = useState("365");
-  const [activeTab, setActiveTab]       = useState("analysis");
+  const [days, setDays] = useState("365");
+  const [activeTab, setActiveTab] = useState("analysis");
 
   const { data: coins, error: coinsError } = useSWR("/api/crypto/coins", fetcher, {
     revalidateOnFocus: false,
@@ -47,7 +47,7 @@ export function CryptoDashboard() {
   );
 
   const handleCoinChange = useCallback((coinId: string) => setSelectedCoin(coinId), []);
-  const handleRefresh    = useCallback(() => mutate(), [mutate]);
+  const handleRefresh = useCallback(() => mutate(), [mutate]);
 
   const handleSelectFromFavorites = useCallback((coinId: string) => {
     setSelectedCoin(coinId);
@@ -66,9 +66,9 @@ export function CryptoDashboard() {
       return { pricePoints: [], emas: [], analyses: [], summary: null, currentPrice: 0, dataWarning: "No se pudieron procesar los datos de precio.", crossoverData: null };
     }
 
-    const currentPrice  = pricePoints[pricePoints.length - 1]?.price || 0;
-    const analyses      = analyzeEmas(currentPrice, emas);
-    const summary       = getMarketSummary(analyses);
+    const currentPrice = pricePoints[pricePoints.length - 1]?.price || 0;
+    const analyses = analyzeEmas(currentPrice, emas);
+    const summary = getMarketSummary(analyses);
     const crossoverData = detectEmaCrossovers(pricePoints, emas);
 
     const missingEmas = [20, 50, 100, 200].filter((p) => !emas.find((e) => e.period === p));
@@ -129,7 +129,7 @@ export function CryptoDashboard() {
 
         <main className="mx-auto max-w-7xl px-4 py-4 flex flex-col gap-6">
 
-          {/* Price banner — coin name, price, source badge only (summary label moved to panel) */}
+          {/* Price banner */}
           {selectedCoinData && currentPrice > 0 && (
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-3">
@@ -159,20 +159,66 @@ export function CryptoDashboard() {
             <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 text-warning text-sm">{dataWarning}</div>
           )}
 
-          {/* ── Unified analysis panel: Resumen + Cruces + Conclusión ── */}
+          {/* ── Unified analysis panel ── */}
           {!isMarketLoading && (crossoverData || summary) && (
             <EmaCrossoverPanel data={crossoverData} summary={summary} />
           )}
 
           {/* Chart */}
           {isMarketLoading ? <ChartSkeleton />
-           : pricePoints.length > 0 ? <PriceChart pricePoints={pricePoints} emas={emas} coinName={selectedCoinData?.name || selectedCoin} crossovers={crossoverData?.crossovers ?? []} />
-           : null}
+            : pricePoints.length > 0 ? <PriceChart pricePoints={pricePoints} emas={emas} coinName={selectedCoinData?.name || selectedCoin} crossovers={crossoverData?.crossovers ?? []} />
+              : null}
 
-          {/* Table — summary card removed from here, now lives in the panel above */}
+          {/* Table */}
           {isMarketLoading ? <TableSkeleton />
-           : analyses.length > 0 && summary ? <EmaTable analyses={analyses} summary={summary} />
-           : null}
+            : analyses.length > 0 && summary ? <EmaTable analyses={analyses} summary={summary} />
+              : null}
+
+          {/* ── NUEVO: Tarjetas de Pendiente (Momentum) ── */}
+          {!isMarketLoading && emas.length > 0 && (
+            <div className="flex flex-col gap-3">
+              <h3 className="text-sm font-semibold text-foreground px-1">Pendiente Actual (Momentum)</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {emas.map((ema) => {
+                  const isPositive = ema.slopePercentage >= 0;
+
+                  // Limitamos el nivel de intensidad del color hasta un 3% de pendiente para que los colores no colapsen
+                  const magnitude = Math.min(Math.abs(ema.slopePercentage), 3);
+                  const intensity = magnitude / 3;
+
+                  // Colores base: Verde (alcista) y Rojo (bajista) en formato RGB
+                  const colorBase = isPositive ? "34, 197, 94" : "239, 68, 68";
+
+                  // El degradado y los bordes se vuelven más intensos a mayor porcentaje de inclinación
+                  const bgGradient = `linear-gradient(135deg, rgba(${colorBase}, ${0.05 + intensity * 0.25}) 0%, rgba(${colorBase}, 0.02) 100%)`;
+                  const borderColor = `rgba(${colorBase}, ${0.2 + intensity * 0.4})`;
+
+                  return (
+                    <div
+                      key={`slope-${ema.period}`}
+                      className="rounded-lg border p-4 flex flex-col gap-1 relative overflow-hidden"
+                      style={{ background: bgGradient, borderColor }}
+                    >
+                      <div className="flex items-center justify-between relative z-10">
+                        <span className="text-sm font-bold" style={{ color: ema.color }}>{ema.label}</span>
+                        {isPositive ? (
+                          <TrendingUp className="size-4" style={{ color: `rgb(${colorBase})` }} />
+                        ) : (
+                          <TrendingDown className="size-4" style={{ color: `rgb(${colorBase})` }} />
+                        )}
+                      </div>
+                      <div className="text-xl font-bold text-foreground mt-1 relative z-10">
+                        {ema.slopePercentage > 0 ? "+" : ""}{ema.slopePercentage.toFixed(2)}%
+                      </div>
+                      <div className="text-xs opacity-70 relative z-10">
+                        Inclinación (24h)
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* EMA Legend */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
