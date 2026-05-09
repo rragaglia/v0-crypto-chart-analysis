@@ -32,16 +32,18 @@ export async function GET(request: NextRequest) {
   const segmentId = searchParams.get("segmentId") || "5"; // Default to SHARK cohort
   const limit = searchParams.get("limit") || "50";
 
-  const apiKey = process.env.HYPERTRACKER_API_KEY;
+  // Get API key from client header or fallback to env var
+  const clientApiKey = request.headers.get("x-api-key");
+  const apiKey = clientApiKey || process.env.HYPERTRACKER_API_KEY;
   
   if (!apiKey) {
     return NextResponse.json(
       { 
-        error: "HYPERTRACKER_API_KEY not configured",
+        error: "API key required",
         requiresSetup: true,
-        message: "Para ver datos de liquidaciones, necesitas configurar tu API key de HyperTracker en las variables de entorno."
+        message: "Para ver datos de liquidaciones, ingresa tu API key de HyperTracker."
       },
-      { status: 200 } // Return 200 so client can handle gracefully
+      { status: 200 }
     );
   }
 

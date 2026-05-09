@@ -13,12 +13,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const apiKey = process.env.HYPERTRACKER_API_KEY;
+  // Get API key from client header or fallback to env var
+  const clientApiKey = request.headers.get("x-api-key");
+  const apiKey = clientApiKey || process.env.HYPERTRACKER_API_KEY;
   
   if (!apiKey) {
     return NextResponse.json(
       { 
-        error: "HYPERTRACKER_API_KEY not configured",
+        error: "API key required",
         requiresSetup: true,
       },
       { status: 200 }
