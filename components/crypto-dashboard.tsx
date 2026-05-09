@@ -6,6 +6,7 @@ import { CoinSelector } from "@/components/coin-selector";
 import { PriceChart } from "@/components/price-chart";
 import { EmaTable } from "@/components/ema-table";
 import { FavoritesWatchlist } from "@/components/favorites-watchlist";
+import { LiquidationsPanel } from "@/components/liquidations-panel";
 import { ChartSkeleton, TableSkeleton } from "@/components/loading-skeletons";
 import {
   Tabs,
@@ -21,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { processEmaData, analyzeEmas, getMarketSummary, formatPrice } from "@/lib/ema";
-import { Activity, TrendingUp, TrendingDown, RefreshCw, BarChart3, Star } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, RefreshCw, BarChart3, Star, Flame } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const fetcher = async (url: string) => {
@@ -155,6 +156,10 @@ export function CryptoDashboard() {
               <TabsTrigger value="favorites" className="gap-1.5">
                 <Star className="size-3.5" />
                 Favoritos
+              </TabsTrigger>
+              <TabsTrigger value="liquidations" className="gap-1.5">
+                <Flame className="size-3.5" />
+                Liquidaciones
               </TabsTrigger>
             </TabsList>
           </div>
@@ -333,6 +338,13 @@ export function CryptoDashboard() {
       <TabsContent value="favorites">
         <main className="mx-auto max-w-7xl px-4 py-6">
           <FavoritesWatchlist coins={coins} />
+        </main>
+      </TabsContent>
+
+      {/* Liquidations Tab */}
+      <TabsContent value="liquidations">
+        <main className="mx-auto max-w-7xl px-4 py-6">
+          <LiquidationsPanel />
         </main>
       </TabsContent>
     </Tabs>
