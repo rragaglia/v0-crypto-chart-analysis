@@ -21,7 +21,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { 
-  AlertTriangle, 
   TrendingDown, 
   Search, 
   RefreshCw, 
@@ -255,174 +254,177 @@ function ApiKeySetup({
   );
 }
 
+// Coin selector specific to Hyperliquid assets, same UX as Analysis tab
+function HyperliquidCoinSelector({
+  selectedSymbol,
+  onSelect,
+}: {
+  selectedSymbol: string | null;
+  onSelect: (symbol: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    if (!search) return HYPERLIQUID_COINS;
+    const q = search.toLowerCase();
+    return HYPERLIQUID_COINS.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.symbol.toLowerCase().includes(q)
+    );
+  }, [search]);
+
+  const selected = selectedSymbol
+    ? HYPERLIQUID_COINS.find((c) => c.hyperliquidSymbol === selectedSymbol)
+    : null;
+
+  return (
+    <Select value={selectedSymbol || ""} onValueChange={onSelect}>
+      <SelectTrigger className="w-full md:w-[280px] bg-card border-border">
+        <SelectValue>
+          {selected ? (
+            <span className="flex items-center gap-2">
+              {selected.image && (
+                <img
+                  src={selected.image}
+                  alt={selected.name}
+                  className="size-5 rounded-full"
+                />
+              )}
+              <span className="font-medium">{selected.name}</span>
+              <span className="text-muted-foreground text-xs">
+                {selected.symbol}
+              </span>
+            </span>
+          ) : (
+            "Seleccionar asset..."
+          )}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent className="max-h-[300px]">
+        <div className="sticky top-0 bg-popover p-2 border-b border-border">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar asset..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8 bg-secondary/50"
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+        {filtered.map((coin) => (
+          <SelectItem key={coin.id} value={coin.hyperliquidSymbol}>
+            <div className="flex items-center gap-2">
+              {coin.image && (
+                <img
+                  src={coin.image}
+                  alt={coin.name}
+                  className="size-5 rounded-full"
+                />
+              )}
+              <span className="font-medium">{coin.name}</span>
+              <span className="text-muted-foreground text-xs">{coin.symbol}</span>
+            </div>
+          </SelectItem>
+        ))}
+        {filtered.length === 0 && (
+          <div className="p-4 text-center text-muted-foreground text-sm">
+            No se encontraron resultados
+          </div>
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
+
 // Main Liquidations Data View
-function LiquidationsDataView({ 
+function LiquidationsDataView({
   apiKey,
-  onDisconnect
-}: { 
+  onDisconnect,
+}: {
   apiKey: string;
   onDisconnect: () => void;
 }) {
-  const [selectedCohort, setSelectedCohort] = useState("5"); // Default to Shark
-  const [selectedCoin, setSelectedCoin] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"overview" | "asset">("overview");
+  const [selectedCohort, setSelectedCohort] = useState("5");
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 
   const fetcher = useMemo(() => createFetcher(apiKey), [apiKey]);
 
-  // Fetch all assets liquidation risk
-  const { 
-    data: overviewData, 
-    error: overviewError, 
-    isLoading: overviewLoading, 
-    mutate: mutateOverview 
-  } = useSWR(
-    viewMode === "overview" ? `/api/liquidations?segmentId=${selectedCohort}&limit=100` : null,
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      dedupingInterval: 60000,
-    }
-  );
-
-  // Fetch specific asset heatmap
-  const { 
-    data: heatmapData, 
-    error: heatmapError, 
+  // Fetch heatmap when a coin is selected
+  const {
+    data: heatmapData,
+    error: heatmapError,
     isLoading: heatmapLoading,
-    mutate: mutateHeatmap
+    mutate: mutateHeatmap,
   } = useSWR(
-    viewMode === "asset" && selectedCoin ? `/api/liquidations/heatmap?coin=${selectedCoin}` : null,
+    selectedSymbol
+      ? `/api/liquidations/heatmap?coin=${selectedSymbol}&segmentId=${selectedCohort}`
+      : null,
     fetcher,
-    {
-      revalidateOnFocus: false,
-      dedupingInterval: 60000,
-    }
+    { revalidateOnFocus: false, dedupingInterval: 60000, keepPreviousData: false }
   );
 
-  // Check if API key became invalid
+  // Disconnect if API key is invalid
   useEffect(() => {
-    if (overviewData?.error?.includes("Invalid") || heatmapData?.error?.includes("Invalid")) {
+    if (heatmapData?.error?.toLowerCase().includes("invalid") ||
+        heatmapData?.error?.toLowerCase().includes("unauthorized") ||
+        heatmapData?.status === 401) {
       onDisconnect();
     }
-  }, [overviewData, heatmapData, onDisconnect]);
+  }, [heatmapData, onDisconnect]);
 
-  const filteredAssets = useMemo(() => {
-    if (!overviewData?.data) return [];
-    
-    let assets: LiquidationAsset[] = overviewData.data;
-    
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      assets = assets.filter((a) => a.coin.toLowerCase().includes(query));
-    }
-    
-    return assets.sort((a, b) => b.liquidationRiskPercent - a.liquidationRiskPercent);
-  }, [overviewData?.data, searchQuery]);
-
+  const selectedCoinMeta = selectedSymbol ? getCoinMeta(selectedSymbol) : null;
   const cohortInfo = COHORTS.find((c) => c.id === selectedCohort);
-  const selectedCoinMeta = selectedCoin ? getCoinMeta(selectedCoin) : null;
-
-  const handleSelectAsset = (coin: string) => {
-    setSelectedCoin(coin);
-    setViewMode("asset");
-  };
-
-  const handleBackToOverview = () => {
-    setViewMode("overview");
-    setSelectedCoin(null);
-  };
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header with controls */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-foreground">
-              {viewMode === "overview" 
-                ? "Riesgo de Liquidacion" 
-                : `Liquidaciones: ${selectedCoin}`}
-            </h2>
-            {viewMode === "asset" && (
-              <button
-                onClick={handleBackToOverview}
-                className="text-sm text-primary hover:underline"
-              >
-                Volver al resumen
-              </button>
-            )}
-          </div>
+      {/* Controls bar */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">
+            Liquidaciones Hyperliquid
+          </h2>
           <p className="text-sm text-muted-foreground">
-            {viewMode === "overview"
-              ? "Porcentaje de OI cerca de liquidacion en Hyperliquid"
-              : `Mapa de liquidaciones para ${selectedCoinMeta?.name || selectedCoin}`}
+            Mapa de liquidaciones por asset y cohort de traders
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {viewMode === "overview" && (
-            <>
-              {/* Cohort selector */}
-              <Select value={selectedCohort} onValueChange={setSelectedCohort}>
-                <SelectTrigger className="w-[180px] bg-card border-border">
-                  <SelectValue placeholder="Seleccionar cohort" />
-                </SelectTrigger>
-                <SelectContent>
-                  {COHORTS.map((cohort) => (
-                    <SelectItem key={cohort.id} value={cohort.id}>
-                      <span className="flex items-center gap-2">
-                        {cohort.name}
-                        <span className="text-xs text-muted-foreground">
-                          {cohort.description}
-                        </span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {/* Asset selector — same UX as Analysis tab */}
+          <HyperliquidCoinSelector
+            selectedSymbol={selectedSymbol}
+            onSelect={setSelectedSymbol}
+          />
 
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar asset..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-[160px] pl-9 bg-card border-border"
-                />
-              </div>
-            </>
-          )}
-
-          {viewMode === "asset" && (
-            <Select value={selectedCoin || ""} onValueChange={handleSelectAsset}>
-              <SelectTrigger className="w-[200px] bg-card border-border">
-                <SelectValue placeholder="Seleccionar asset" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[300px]">
-                {HYPERLIQUID_COINS.map((coin) => (
-                  <SelectItem key={coin.id} value={coin.hyperliquidSymbol}>
-                    <span className="flex items-center gap-2">
-                      {coin.image && (
-                        <img src={coin.image} alt={coin.symbol} className="size-4 rounded-full" />
-                      )}
-                      {coin.symbol}
-                      <span className="text-xs text-muted-foreground">{coin.name}</span>
+          {/* Cohort selector */}
+          <Select value={selectedCohort} onValueChange={setSelectedCohort}>
+            <SelectTrigger className="w-[180px] bg-card border-border">
+              <SelectValue placeholder="Cohort" />
+            </SelectTrigger>
+            <SelectContent>
+              {COHORTS.map((cohort) => (
+                <SelectItem key={cohort.id} value={cohort.id}>
+                  <span className="flex items-center gap-2">
+                    {cohort.name}
+                    <span className="text-xs text-muted-foreground">
+                      {cohort.description}
                     </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           {/* Refresh */}
           <button
-            onClick={() => viewMode === "overview" ? mutateOverview() : mutateHeatmap()}
-            className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            onClick={() => mutateHeatmap()}
+            disabled={!selectedSymbol}
+            className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label="Refrescar datos"
           >
-            <RefreshCw className={`size-4 ${(overviewLoading || heatmapLoading) ? "animate-spin" : ""}`} />
+            <RefreshCw className={`size-4 ${heatmapLoading ? "animate-spin" : ""}`} />
           </button>
 
           {/* Disconnect */}
@@ -436,234 +438,131 @@ function LiquidationsDataView({
         </div>
       </div>
 
-      {/* Cohort badge */}
-      {viewMode === "overview" && cohortInfo && (
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-card">
-            Cohort: {cohortInfo.name} ({cohortInfo.description})
-          </Badge>
-          {overviewData?.timestamp && (
+      {/* Active filters badge */}
+      {(selectedSymbol || cohortInfo) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedCoinMeta && (
+            <Badge variant="outline" className="bg-card gap-1.5">
+              {selectedCoinMeta.image && (
+                <img
+                  src={selectedCoinMeta.image}
+                  alt={selectedCoinMeta.name}
+                  className="size-3.5 rounded-full"
+                />
+              )}
+              {selectedCoinMeta.name}
+            </Badge>
+          )}
+          {cohortInfo && (
+            <Badge variant="outline" className="bg-card">
+              Cohort: {cohortInfo.name} ({cohortInfo.description})
+            </Badge>
+          )}
+          {heatmapData?.timestamp && (
             <span className="text-xs text-muted-foreground">
-              Actualizado: {new Date(overviewData.timestamp).toLocaleTimeString("es-ES")}
+              Actualizado: {new Date(heatmapData.timestamp).toLocaleTimeString("es-ES")}
             </span>
           )}
         </div>
       )}
 
-      {/* Error states */}
-      {(overviewError || heatmapError) && (
+      {/* Error */}
+      {heatmapError && (
         <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger text-sm">
-          Error al cargar datos de liquidacion. Intenta de nuevo.
+          Error al cargar datos. Intenta de nuevo.
         </div>
       )}
 
-      {/* Overview Mode - All Assets Table */}
-      {viewMode === "overview" && (
-        <>
-          {overviewLoading && (
-            <div className="rounded-lg border border-border bg-card">
-              <div className="p-4 space-y-3">
-                {[...Array(8)].map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
+      {/* Empty state — no coin selected */}
+      {!selectedSymbol && (
+        <div className="rounded-lg border border-border bg-card p-12 text-center">
+          <TrendingDown className="mx-auto size-12 text-muted-foreground/30" />
+          <p className="mt-4 font-medium text-foreground">Selecciona un asset</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Elige una criptomoneda del selector para ver su mapa de liquidaciones.
+          </p>
+        </div>
+      )}
+
+      {/* Loading */}
+      {selectedSymbol && heatmapLoading && (
+        <div className="rounded-lg border border-border bg-card">
+          <div className="p-4 space-y-3">
+            {[...Array(10)].map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Heatmap table */}
+      {selectedSymbol && !heatmapLoading && heatmapData?.data && (
+        <div className="space-y-4">
+          {/* Asset header card */}
+          <div className="rounded-lg border border-border bg-card p-4">
+            <div className="flex items-center gap-4">
+              {selectedCoinMeta?.image && (
+                <img
+                  src={selectedCoinMeta.image}
+                  alt={selectedSymbol}
+                  className="size-12 rounded-full"
+                />
+              )}
+              <div>
+                <h3 className="text-xl font-bold text-foreground">
+                  {selectedCoinMeta?.name || selectedSymbol}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {selectedSymbol} &mdash; Mapa de liquidaciones en Hyperliquid
+                </p>
               </div>
             </div>
-          )}
+          </div>
 
-          {!overviewLoading && filteredAssets.length > 0 && (
+          {Array.isArray(heatmapData.data) && heatmapData.data.length > 0 ? (
             <div className="rounded-lg border border-border bg-card overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30 hover:bg-muted/30">
-                    <TableHead className="w-[200px]">Asset</TableHead>
-                    <TableHead className="text-right">Riesgo Liq. %</TableHead>
-                    <TableHead className="text-right">Open Interest</TableHead>
-                    <TableHead className="text-right">Valor en Riesgo</TableHead>
-                    <TableHead className="text-center">Nivel</TableHead>
-                    <TableHead className="text-center w-[100px]">Accion</TableHead>
+                    <TableHead>Precio</TableHead>
+                    <TableHead className="text-right text-danger">Liq. Longs</TableHead>
+                    <TableHead className="text-right text-success">Liq. Shorts</TableHead>
+                    <TableHead className="text-right">Acum. Longs</TableHead>
+                    <TableHead className="text-right">Acum. Shorts</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAssets.map((asset) => {
-                    const coinMeta = getCoinMeta(asset.coin);
-                    const riskLevel = getRiskLevel(asset.liquidationRiskPercent);
-                    
-                    return (
-                      <TableRow key={asset.coin} className="hover:bg-muted/10">
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            {coinMeta?.image ? (
-                              <img
-                                src={coinMeta.image}
-                                alt={asset.coin}
-                                className="size-7 rounded-full"
-                              />
-                            ) : (
-                              <div className="flex size-7 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                                {asset.coin.slice(0, 2)}
-                              </div>
-                            )}
-                            <div>
-                              <span className="font-medium text-foreground">
-                                {asset.coin}
-                              </span>
-                              {coinMeta?.name && (
-                                <span className="ml-2 text-xs text-muted-foreground">
-                                  {coinMeta.name}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span
-                            className={`font-mono font-semibold ${
-                              asset.liquidationRiskPercent >= 20
-                                ? "text-danger"
-                                : asset.liquidationRiskPercent >= 10
-                                ? "text-warning"
-                                : asset.liquidationRiskPercent >= 5
-                                ? "text-chart-3"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            {asset.liquidationRiskPercent.toFixed(2)}%
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {formatCurrency(asset.openInterest)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {formatCurrency(asset.valueAtRisk)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge className={`${riskLevel.color} text-xs`}>
-                            {asset.liquidationRiskPercent >= 10 && (
-                              <AlertTriangle className="size-3 mr-1" />
-                            )}
-                            {riskLevel.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <button
-                            onClick={() => handleSelectAsset(asset.coin)}
-                            className="text-xs text-primary hover:underline"
-                          >
-                            Ver detalle
-                          </button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {(heatmapData.data as HeatmapData[]).slice(0, 50).map((row, i) => (
+                    <TableRow key={i} className="hover:bg-muted/10">
+                      <TableCell className="font-mono font-medium">
+                        ${row.price.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-danger">
+                        {formatCurrency(row.longLiquidations)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-success">
+                        {formatCurrency(row.shortLiquidations)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                        {formatCurrency(row.cumulativeLongs)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                        {formatCurrency(row.cumulativeShorts)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>
-          )}
-
-          {!overviewLoading && !overviewError && filteredAssets.length === 0 && (
-            <div className="rounded-lg border border-border bg-card p-8 text-center">
-              <TrendingDown className="mx-auto size-10 text-muted-foreground/50" />
-              <p className="mt-3 text-sm text-muted-foreground">
-                {searchQuery
-                  ? "No se encontraron assets con ese nombre."
-                  : "No hay datos de liquidacion disponibles."}
-              </p>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Asset Mode - Heatmap View */}
-      {viewMode === "asset" && selectedCoin && (
-        <>
-          {heatmapLoading && (
-            <div className="rounded-lg border border-border bg-card p-8">
-              <div className="flex flex-col items-center gap-4">
-                <RefreshCw className="size-8 text-muted-foreground animate-spin" />
-                <p className="text-sm text-muted-foreground">Cargando datos de liquidacion...</p>
-              </div>
-            </div>
-          )}
-
-          {!heatmapLoading && heatmapData?.data && (
-            <div className="space-y-4">
-              {/* Asset header */}
-              <div className="rounded-lg border border-border bg-card p-4">
-                <div className="flex items-center gap-4">
-                  {selectedCoinMeta?.image && (
-                    <img 
-                      src={selectedCoinMeta.image} 
-                      alt={selectedCoin} 
-                      className="size-12 rounded-full"
-                    />
-                  )}
-                  <div>
-                    <h3 className="text-xl font-bold text-foreground">
-                      {selectedCoinMeta?.name || selectedCoin}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedCoin} - Mapa de liquidaciones Hyperliquid
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Heatmap data table */}
-              {Array.isArray(heatmapData.data) && heatmapData.data.length > 0 ? (
-                <div className="rounded-lg border border-border bg-card overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/30 hover:bg-muted/30">
-                        <TableHead>Precio</TableHead>
-                        <TableHead className="text-right text-danger">Liq. Longs</TableHead>
-                        <TableHead className="text-right text-success">Liq. Shorts</TableHead>
-                        <TableHead className="text-right">Acum. Longs</TableHead>
-                        <TableHead className="text-right">Acum. Shorts</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(heatmapData.data as HeatmapData[]).slice(0, 50).map((row, i) => (
-                        <TableRow key={i} className="hover:bg-muted/10">
-                          <TableCell className="font-mono font-medium">
-                            ${row.price.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-danger">
-                            {formatCurrency(row.longLiquidations)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-success">
-                            {formatCurrency(row.shortLiquidations)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                            {formatCurrency(row.cumulativeLongs)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                            {formatCurrency(row.cumulativeShorts)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-border bg-card p-8 text-center">
-                  <Info className="mx-auto size-10 text-muted-foreground/50" />
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    No hay datos de heatmap disponibles para este asset.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {!heatmapLoading && !heatmapData?.data && !heatmapError && (
+          ) : (
             <div className="rounded-lg border border-border bg-card p-8 text-center">
               <Info className="mx-auto size-10 text-muted-foreground/50" />
               <p className="mt-3 text-sm text-muted-foreground">
-                Selecciona un asset para ver su mapa de liquidaciones.
+                No hay datos de liquidacion disponibles para este asset.
               </p>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Info footer */}
@@ -672,12 +571,12 @@ function LiquidationsDataView({
           <Info className="size-4 mt-0.5 text-muted-foreground shrink-0" />
           <div className="text-xs text-muted-foreground space-y-1">
             <p>
-              <strong className="text-foreground">Riesgo de Liquidacion:</strong>{" "}
-              Porcentaje del OI dentro del 25% de su precio de liquidacion.
+              <strong className="text-foreground">Mapa de liquidaciones:</strong>{" "}
+              Niveles de precio donde se concentran liquidaciones de longs y shorts.
             </p>
             <p>
               <strong className="text-foreground">Cohorts:</strong>{" "}
-              Traders segmentados por tamano de cuenta.
+              Traders segmentados por tamano de cuenta en Hyperliquid.
             </p>
             <p>
               Datos de{" "}
@@ -689,7 +588,7 @@ function LiquidationsDataView({
               >
                 HyperTracker
               </a>{" "}
-              - exclusivo para Hyperliquid.
+              &mdash; exclusivo para Hyperliquid.
             </p>
           </div>
         </div>
