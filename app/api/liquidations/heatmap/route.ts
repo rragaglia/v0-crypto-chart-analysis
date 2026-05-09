@@ -47,14 +47,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    console.log("[v0] HyperTracker response status:", response.status);
+    console.log("[v0] HyperTracker response headers:", Object.fromEntries(response.headers.entries()));
+
     // The API returns a redirect to S3
     if (response.status === 302 || response.status === 307) {
       const downloadUrl = response.headers.get("location");
+      console.log("[v0] Redirect URL:", downloadUrl);
       if (downloadUrl) {
         // Fetch the actual data from S3
         const dataResponse = await fetch(downloadUrl);
+        console.log("[v0] S3 response status:", dataResponse.status);
         if (dataResponse.ok) {
           const data = await dataResponse.json();
+          console.log("[v0] S3 data sample:", JSON.stringify(data).slice(0, 500));
           return NextResponse.json({
             status: "success",
             coin: coin.toUpperCase(),
@@ -68,6 +74,7 @@ export async function GET(request: NextRequest) {
     // If it's a direct JSON response
     if (response.ok) {
       const data = await response.json();
+      console.log("[v0] Direct response data:", JSON.stringify(data).slice(0, 500));
       return NextResponse.json({
         status: "success",
         coin: coin.toUpperCase(),
@@ -75,6 +82,10 @@ export async function GET(request: NextRequest) {
         timestamp: new Date().toISOString(),
       });
     }
+    
+    // Log error response body
+    const errorText = await response.text();
+    console.log("[v0] Error response:", errorText.slice(0, 500));
 
     throw new Error(`HyperTracker API error: ${response.status}`);
 
