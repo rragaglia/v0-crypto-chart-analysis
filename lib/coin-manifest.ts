@@ -20,10 +20,8 @@ export interface CoinMeta {
 export const COIN_MANIFEST: CoinMeta[] = [
   { id: "bitcoin",            symbol: "BTC",    name: "Bitcoin",            hyperliquidSymbol: "BTC",    binanceSymbol: "BTC",    image: "https://assets.coingecko.com/coins/images/1/small/bitcoin.png" },
   { id: "ethereum",           symbol: "ETH",    name: "Ethereum",           hyperliquidSymbol: "ETH",    binanceSymbol: "ETH",    image: "https://assets.coingecko.com/coins/images/279/small/ethereum.png" },
-  { id: "tether",             symbol: "USDT",   name: "Tether",             hyperliquidSymbol: "USDT",   binanceSymbol: "USDT",   image: "https://assets.coingecko.com/coins/images/325/small/Tether.png" },
   { id: "binancecoin",        symbol: "BNB",    name: "BNB",                hyperliquidSymbol: "BNB",    binanceSymbol: "BNB",    image: "https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png" },
   { id: "solana",             symbol: "SOL",    name: "Solana",             hyperliquidSymbol: "SOL",    binanceSymbol: "SOL",    image: "https://assets.coingecko.com/coins/images/4128/small/solana.png" },
-  { id: "usd-coin",           symbol: "USDC",   name: "USD Coin",           hyperliquidSymbol: "USDC",   binanceSymbol: "USDC",   image: "https://assets.coingecko.com/coins/images/6319/small/usdc.png" },
   { id: "ripple",             symbol: "XRP",    name: "XRP",                hyperliquidSymbol: "XRP",    binanceSymbol: "XRP",    image: "https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png" },
   { id: "dogecoin",           symbol: "DOGE",   name: "Dogecoin",           hyperliquidSymbol: "DOGE",   binanceSymbol: "DOGE",   image: "https://assets.coingecko.com/coins/images/5/small/dogecoin.png" },
   { id: "hyperliquid",        symbol: "HYPE",   name: "Hyperliquid",        hyperliquidSymbol: "HYPE",   binanceSymbol: "HYPE",   image: "https://assets.coingecko.com/coins/images/40845/small/hyperliquid.jpeg" },
@@ -116,6 +114,9 @@ export const COIN_MANIFEST: CoinMeta[] = [
   { id: "stacks",             symbol: "STX",    name: "Stacks",             hyperliquidSymbol: "STX",    binanceSymbol: "STX",    image: "https://assets.coingecko.com/coins/images/2069/small/Stacks_logo_full.png" },
   { id: "zcash",              symbol: "ZEC",    name: "Zcash",              hyperliquidSymbol: "ZEC",    binanceSymbol: "ZEC",    image: "https://assets.coingecko.com/coins/images/486/small/circle-zcash-color.png" },
   { id: "dash",               symbol: "DASH",   name: "Dash",               hyperliquidSymbol: "DASH",   binanceSymbol: "DASH",   image: "https://assets.coingecko.com/coins/images/19/small/dash-logo.png" },
+  { id: "astar",              symbol: "ASTR",   name: "Astar",              hyperliquidSymbol: "ASTR",   binanceSymbol: "ASTR",   image: "https://assets.coingecko.com/coins/images/22617/small/astr.png" },
+  { id: "litentry",           symbol: "LIT",    name: "Litentry",           hyperliquidSymbol: "LIT",    binanceSymbol: "LIT",    image: "https://assets.coingecko.com/coins/images/13833/small/Litentry.png" },
+  { id: "drift-protocol",     symbol: "DRIFT",  name: "Drift",              hyperliquidSymbol: "DRIFT",  binanceSymbol: "DRIFT",  image: "https://assets.coingecko.com/coins/images/35631/small/drift.jpeg" },
 ];
 
 /** Look up a coin by its CoinGecko ID */

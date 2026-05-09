@@ -221,6 +221,15 @@ const SYMBOL_MAPPINGS: Record<string, { hyperliquid: string; binance: string }> 
   // Bitcoin SV
   "bitcoin-cash-sv": { hyperliquid: "BSV", binance: "BSV" },
   bsv: { hyperliquid: "BSV", binance: "BSV" },
+  // Astar Network (ASTR on exchanges)
+  astar: { hyperliquid: "ASTR", binance: "ASTR" },
+  astr: { hyperliquid: "ASTR", binance: "ASTR" },
+  // Litentry
+  litentry: { hyperliquid: "LIT", binance: "LIT" },
+  lit: { hyperliquid: "LIT", binance: "LIT" },
+  // Drift Protocol
+  "drift-protocol": { hyperliquid: "DRIFT", binance: "DRIFT" },
+  drift: { hyperliquid: "DRIFT", binance: "DRIFT" },
 };
 
 /**
