@@ -9,7 +9,8 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  Legend
+  Legend,
+  ReferenceLine
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -23,7 +24,6 @@ const batchFetcher = async (url: string) => {
   return data;
 };
 
-// Se quitó 1 Hora y se agregaron 2 Años y 3 Años
 const TIMEFRAMES = [
   { value: "4h", label: "4 Horas", days: "1" },
   { value: "1d", label: "1 Día", days: "1" },
@@ -35,17 +35,15 @@ const TIMEFRAMES = [
   { value: "1095d", label: "3 Años", days: "1095" },
 ];
 
-// Colores para diferenciar hasta 5 activos distintos en el gráfico
 const COLORS = ["#a3e635", "#3b82f6", "#f59e0b", "#ec4899", "#8b5cf6"];
 
 export function RelativeStrength({ coins }: { coins: any[] }) {
-  const [baseCoins, setBaseCoins] = useState<string[]>(["hyperliquid"]); // Ahora es un array (Max 5)
+  const [baseCoins, setBaseCoins] = useState<string[]>(["hyperliquid"]);
   const [quoteCoin, setQuoteCoin] = useState("bitcoin");
   const [timeframe, setTimeframe] = useState("30d");
   const [addValue, setAddValue] = useState("");
 
   const handleSwap = () => {
-    // Solo permitimos invertir si hay 1 solo activo base
     if (baseCoins.length === 1) {
       const oldBase = baseCoins[0];
       setBaseCoins([quoteCoin]);
@@ -66,8 +64,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
   };
 
   const tfConfig = TIMEFRAMES.find((t) => t.value === timeframe) || TIMEFRAMES[3];
-
-  // Armamos la lista de todos los assets necesarios (base + quote) sin repetir
   const allCoinsToFetch = Array.from(new Set([...baseCoins, quoteCoin])).join(",");
 
   const { data, isLoading } = useSWR(
@@ -86,14 +82,15 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     const now = Date.now();
     const cutoff = timeframe === "4h" ? now - 4 * 3600 * 1000 : 0;
 
-    // Recorremos la línea de tiempo del Activo Comparativo (Quote)
+    // Guardamos el primer ratio válido de cada moneda para usarlo como punto 0%
+    const initialRatios: Record<string, number> = {};
+
     for (const [tsQ, priceQ] of quotePrices) {
       if (tsQ < cutoff) continue;
       
       const dataPoint: any = { timestamp: tsQ };
       let hasData = false;
 
-      // Por cada punto de tiempo, buscamos el precio equivalente de cada Activo Base
       for (const bc of baseCoins) {
         const bPrices = data.results[bc]?.prices;
         if (!bPrices || bPrices.length === 0) continue;
@@ -109,10 +106,18 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
           }
         }
 
-        // Tolerancia de 1 hora para corto plazo, 12 horas para gráfico diario/largo plazo
         const tolerance = tfConfig.days === "1" ? 3600 * 1000 : 12 * 3600 * 1000;
         if (minDiff <= tolerance) {
-          dataPoint[bc] = closestPrice / priceQ;
+          const rawRatio = closestPrice / priceQ;
+          
+          // Si es la primera vez que vemos este ratio, lo guardamos como referencia
+          if (initialRatios[bc] === undefined) {
+            initialRatios[bc] = rawRatio;
+          }
+
+          // Convertimos el ratio actual a un porcentaje de rendimiento desde el primer punto
+          const pctChange = ((rawRatio - initialRatios[bc]) / initialRatios[bc]) * 100;
+          dataPoint[bc] = pctChange;
           hasData = true;
         }
       }
@@ -131,7 +136,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-4 p-4 border border-border bg-card rounded-lg shadow-sm">
         
-        {/* PANEL DE ACTIVOS BASE */}
         <div className="flex flex-col gap-2 flex-1 min-w-[250px]">
           <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Activos Base (Max 5)</span>
           <div className="flex flex-wrap items-center gap-2">
@@ -154,7 +158,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
               )
             })}
             
-            {/* BOTÓN PARA AÑADIR NUEVOS ACTIVOS BASE */}
             {baseCoins.length < 5 && (
               <Select value={addValue} onValueChange={(id) => { addBaseCoin(id); setAddValue(""); }}>
                 <SelectTrigger className="w-fit bg-transparent border-border border-dashed h-8 text-xs px-3 shadow-none hover:bg-secondary/50 transition-colors">
@@ -170,7 +173,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
           </div>
         </div>
 
-        {/* BOTÓN SWAP (Solo si hay 1 solo activo base) */}
         {baseCoins.length === 1 && (
           <button 
             onClick={handleSwap}
@@ -181,13 +183,11 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
           </button>
         )}
 
-        {/* SELECTOR ACTIVO COMPARATIVO */}
         <div className="flex flex-col gap-2 min-w-[150px]">
           <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Activo Comparativo</span>
           <CoinSelector coins={coins} selectedCoinId={quoteCoin} onSelect={setQuoteCoin} />
         </div>
 
-        {/* SELECTOR TEMPORALIDAD */}
         <div className="flex flex-col gap-2 min-w-[140px]">
           <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Temporalidad</span>
           <Select value={timeframe} onValueChange={setTimeframe}>
@@ -202,13 +202,13 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            Análisis de Fuerza Relativa contra {quoteData?.name} ({quoteData?.symbol.toUpperCase()})
+            Rendimiento Relativo % vs {quoteData?.name} ({quoteData?.symbol.toUpperCase()})
           </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="h-[400px] flex items-center justify-center text-muted-foreground gap-2">
-              <Loader2 className="size-6 animate-spin" /> Calculando ratios...
+              <Loader2 className="size-6 animate-spin" /> Calculando rendimiento...
             </div>
           ) : chartData.length > 0 ? (
             <div className="h-[400px] w-full mt-4">
@@ -232,14 +232,14 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                     domain={['auto', 'auto']} 
                     width={75}
                     tick={{ fill: "oklch(0.6 0 0)", fontSize: 11 }}
-                    tickFormatter={(val) => val.toPrecision(4)}
+                    tickFormatter={(val) => `${val > 0 ? "+" : ""}${val.toFixed(2)}%`}
                   />
                   <Tooltip 
                     contentStyle={{ backgroundColor: "oklch(0.17 0.005 260)", borderColor: "oklch(0.25 0.005 260)", borderRadius: "8px" }}
                     labelFormatter={(label) => new Date(label as number).toLocaleString("es-ES")}
                     formatter={(value: number, name: string) => {
                       const symbol = coins.find((c: any) => c.id === name)?.symbol.toUpperCase() || name;
-                      return [value.toPrecision(6), `${symbol} / ${quoteData?.symbol.toUpperCase()}`];
+                      return [`${value > 0 ? "+" : ""}${value.toFixed(2)}%`, `${symbol} / ${quoteData?.symbol.toUpperCase()}`];
                     }}
                   />
                   <Legend 
@@ -250,6 +250,10 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                       return <span style={{ color: "var(--foreground)", fontWeight: 500, fontSize: "13px" }}>{symbol} / {quoteData?.symbol.toUpperCase()}</span>;
                     }}
                   />
+                  
+                  {/* Línea horizontal en 0% para referencia rápida */}
+                  <ReferenceLine y={0} stroke="oklch(0.6 0 0)" strokeDasharray="3 3" opacity={0.6} />
+
                   {baseCoins.map((bc, i) => (
                     <Line 
                       key={bc}
