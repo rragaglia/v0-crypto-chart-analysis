@@ -14,6 +14,7 @@ import { processEmaData, analyzeEmas, getMarketSummary, formatPrice, detectEmaCr
 import { Activity, TrendingUp, TrendingDown, RefreshCw, BarChart3, Star, Database } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getSourceDisplayName } from "@/lib/price-fetcher";
+import { RelativeStrength } from "@/components/relative-strength";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
