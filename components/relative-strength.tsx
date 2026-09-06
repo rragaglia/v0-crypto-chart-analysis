@@ -15,7 +15,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CoinSelector } from "@/components/coin-selector";
-import { Loader2, ArrowRightLeft, X, Plus, Info } from "lucide-react";
+import { Loader2, ArrowRightLeft, X, Plus, Info, TrendingUp, TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const batchFetcher = async (url: string) => {
@@ -43,7 +43,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
   const [timeframe, setTimeframe] = useState("30d");
   const [addValue, setAddValue] = useState("");
   
-  // NUEVO: Estado para guardar la fecha donde el usuario hace clic (el nuevo 0%)
   const [rebaseDate, setRebaseDate] = useState<number | null>(null);
 
   const handleSwap = () => {
@@ -51,13 +50,13 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       const oldBase = baseCoins[0];
       setBaseCoins([quoteCoin]);
       setQuoteCoin(oldBase);
-      setRebaseDate(null); // Reseteamos el rebase al invertir
+      setRebaseDate(null);
     }
   };
 
   const handleTimeframeChange = (val: string) => {
     setTimeframe(val);
-    setRebaseDate(null); // Reseteamos el rebase al cambiar de tiempo
+    setRebaseDate(null);
   };
 
   const addBaseCoin = (id: string) => {
@@ -91,7 +90,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     const now = Date.now();
     const cutoff = timeframe === "4h" ? now - 4 * 3600 * 1000 : 0;
 
-    // 1. PRIMER PASO: Agrupar los ratios crudos por cada fecha
     for (const [tsQ, priceQ] of quotePrices) {
       if (tsQ < cutoff) continue;
       
@@ -127,15 +125,11 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
     if (rawMerged.length === 0) return [];
 
-    // 2. SEGUNDO PASO: Buscar los ratios "Base" (el 0%) según si el usuario hizo clic o no
     const baseRatios: Record<string, number> = {};
     const targetTs = rebaseDate || rawMerged[0].timestamp;
 
     for (const bc of baseCoins) {
-      // Buscamos el punto de datos más cercano a la fecha clickeada (o la primera)
       let refPoint = rawMerged.find(d => d.timestamp >= targetTs && d.ratios[bc] !== undefined);
-      
-      // Si no encuentra hacia adelante (ej. hizo clic muy al final), busca hacia atrás
       if (!refPoint) {
         refPoint = [...rawMerged].reverse().find(d => d.timestamp <= targetTs && d.ratios[bc] !== undefined);
       }
@@ -145,7 +139,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       }
     }
 
-    // 3. TERCER PASO: Calcular porcentajes relativos usando la nueva base
     const finalMerged = rawMerged.map(d => {
       const point: any = { timestamp: d.timestamp };
       for (const bc of baseCoins) {
@@ -160,6 +153,9 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
   }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate]);
 
   const quoteData = coins?.find((c) => c.id === quoteCoin);
+  
+  // Extraemos el último punto de datos para mostrar el resumen final
+  const finalDataPoint = chartData.length > 0 ? chartData[chartData.length - 1] : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -234,7 +230,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
             <CardTitle className="text-lg font-semibold flex flex-wrap items-center gap-2">
               Rendimiento Relativo vs {quoteData?.name}
               
-              {/* Etiqueta interactiva para mostrar que se reestableció el 0% y permitir borrarlo */}
               {rebaseDate && (
                 <Badge 
                   variant="outline" 
@@ -260,78 +255,101 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
               <Loader2 className="size-6 animate-spin" /> Calculando rendimiento...
             </div>
           ) : chartData.length > 0 ? (
-            <div className="h-[400px] w-full mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart 
-                  data={chartData} 
-                  margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
-                  // EVENTO CLIC PARA FIJAR EL NUEVO CERO
-                  onClick={(e) => {
-                    if (e && e.activeLabel) {
-                      setRebaseDate(e.activeLabel as number);
-                    }
-                  }}
-                  style={{ cursor: "crosshair" }}
-                >
-                  <XAxis 
-                    dataKey="timestamp" 
-                    type="number" 
-                    domain={['dataMin', 'dataMax']}
-                    tick={{ fill: "oklch(0.6 0 0)", fontSize: 11 }}
-                    tickFormatter={(val) => {
-                      const d = new Date(val);
-                      if (timeframe === "4h" || timeframe === "1d") {
-                        return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+            <>
+              <div className="h-[400px] w-full mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart 
+                    data={chartData} 
+                    margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
+                    onClick={(e: any) => {
+                      if (e && e.activeLabel) {
+                        setRebaseDate(e.activeLabel as number);
                       }
-                      return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: timeframe.includes("y") || timeframe === "730d" || timeframe === "1095d" ? "2-digit" : undefined });
                     }}
-                    minTickGap={40}
-                  />
-                  <YAxis 
-                    domain={['auto', 'auto']} 
-                    width={75}
-                    tick={{ fill: "oklch(0.6 0 0)", fontSize: 11 }}
-                    tickFormatter={(val) => `${val > 0 ? "+" : ""}${val.toFixed(2)}%`}
-                  />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: "oklch(0.17 0.005 260)", borderColor: "oklch(0.25 0.005 260)", borderRadius: "8px" }}
-                    labelFormatter={(label) => new Date(label as number).toLocaleString("es-ES")}
-                    formatter={(value: number, name: string) => {
-                      const symbol = coins.find((c: any) => c.id === name)?.symbol.toUpperCase() || name;
-                      return [`${value > 0 ? "+" : ""}${value.toFixed(2)}%`, `${symbol} / ${quoteData?.symbol.toUpperCase()}`];
-                    }}
-                  />
-                  <Legend 
-                    verticalAlign="top" 
-                    height={36} 
-                    formatter={(value) => {
-                      const symbol = coins.find((c: any) => c.id === value)?.symbol.toUpperCase() || value;
-                      return <span style={{ color: "var(--foreground)", fontWeight: 500, fontSize: "13px", cursor: "pointer" }}>{symbol} / {quoteData?.symbol.toUpperCase()}</span>;
-                    }}
-                  />
-                  
-                  {/* Línea horizontal en 0% para referencia */}
-                  <ReferenceLine y={0} stroke="oklch(0.6 0 0)" strokeDasharray="3 3" opacity={0.6} />
-
-                  {/* Línea vertical para mostrar dónde está fijado el nuevo 0% */}
-                  {rebaseDate && (
-                    <ReferenceLine x={rebaseDate} stroke="var(--primary)" strokeDasharray="4 4" opacity={0.5} />
-                  )}
-
-                  {baseCoins.map((bc, i) => (
-                    <Line 
-                      key={bc}
-                      type="monotone" 
-                      dataKey={bc} 
-                      stroke={COLORS[i]} 
-                      strokeWidth={2} 
-                      dot={false} 
-                      activeDot={{ r: 4 }}
+                    style={{ cursor: "crosshair" }}
+                  >
+                    <XAxis 
+                      dataKey="timestamp" 
+                      type="number" 
+                      domain={['dataMin', 'dataMax']}
+                      tick={{ fill: "oklch(0.6 0 0)", fontSize: 11 }}
+                      tickFormatter={(val) => {
+                        const d = new Date(val);
+                        if (timeframe === "4h" || timeframe === "1d") {
+                          return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+                        }
+                        return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: timeframe.includes("y") || timeframe === "730d" || timeframe === "1095d" ? "2-digit" : undefined });
+                      }}
+                      minTickGap={40}
                     />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+                    <YAxis 
+                      domain={['auto', 'auto']} 
+                      width={75}
+                      tick={{ fill: "oklch(0.6 0 0)", fontSize: 11 }}
+                      tickFormatter={(val) => `${val > 0 ? "+" : ""}${val.toFixed(2)}%`}
+                    />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: "oklch(0.17 0.005 260)", borderColor: "oklch(0.25 0.005 260)", borderRadius: "8px" }}
+                      labelFormatter={(label) => new Date(label as number).toLocaleString("es-ES")}
+                      formatter={(value: number, name: string) => {
+                        const symbol = coins.find((c: any) => c.id === name)?.symbol.toUpperCase() || name;
+                        return [`${value > 0 ? "+" : ""}${value.toFixed(2)}%`, `${symbol} / ${quoteData?.symbol.toUpperCase()}`];
+                      }}
+                    />
+                    <Legend 
+                      verticalAlign="top" 
+                      height={36} 
+                      formatter={(value) => {
+                        const symbol = coins.find((c: any) => c.id === value)?.symbol.toUpperCase() || value;
+                        return <span style={{ color: "var(--foreground)", fontWeight: 500, fontSize: "13px", cursor: "pointer" }}>{symbol} / {quoteData?.symbol.toUpperCase()}</span>;
+                      }}
+                    />
+                    
+                    <ReferenceLine y={0} stroke="oklch(0.6 0 0)" strokeDasharray="3 3" opacity={0.6} />
+
+                    {rebaseDate && (
+                      <ReferenceLine x={rebaseDate} stroke="var(--primary)" strokeDasharray="4 4" opacity={0.5} />
+                    )}
+
+                    {baseCoins.map((bc, i) => (
+                      <Line 
+                        key={bc}
+                        type="monotone" 
+                        dataKey={bc} 
+                        stroke={COLORS[i]} 
+                        strokeWidth={2} 
+                        dot={false} 
+                        activeDot={{ r: 4 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* RESUMEN FINAL DE RENDIMIENTO */}
+              {finalDataPoint && (
+                <div className="flex flex-wrap items-center justify-center gap-3 mt-6 pt-4 border-t border-border/50">
+                  <span className="text-sm font-semibold text-muted-foreground mr-2">Rendimiento actual:</span>
+                  {baseCoins.map((bc, i) => {
+                    const value = finalDataPoint[bc];
+                    if (value === undefined) return null;
+                    const isPositive = value >= 0;
+                    const c = coins.find((x: any) => x.id === bc);
+
+                    return (
+                      <div key={`summary-${bc}`} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary/30 border border-border/50 shadow-sm">
+                        <div className="size-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
+                        <span className="font-medium text-sm text-foreground">{c?.symbol.toUpperCase()}</span>
+                        <div className={`flex items-center gap-1 font-bold text-sm ${isPositive ? 'text-success' : 'text-danger'}`}>
+                          {isPositive ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
+                          {isPositive ? "+" : ""}{value.toFixed(2)}%
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           ) : (
             <div className="h-[400px] flex flex-col items-center justify-center text-muted-foreground">
               <ArrowRightLeft className="size-10 opacity-20 mb-4" />
