@@ -9,12 +9,13 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  ReferenceArea,
+  Legend
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CoinSelector } from "@/components/coin-selector";
-import { Loader2, ArrowRightLeft } from "lucide-react";
+import { Loader2, ArrowRightLeft, X, Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 const batchFetcher = async (url: string) => {
   const res = await fetch(url);
@@ -22,111 +23,175 @@ const batchFetcher = async (url: string) => {
   return data;
 };
 
+// Se quitó 1 Hora y se agregaron 2 Años y 3 Años
 const TIMEFRAMES = [
-  { value: "1h", label: "1 Hora", days: "1" },
   { value: "4h", label: "4 Horas", days: "1" },
   { value: "1d", label: "1 Día", days: "1" },
   { value: "7d", label: "7 Días", days: "7" },
   { value: "30d", label: "30 Días", days: "30" },
   { value: "180d", label: "6 Meses", days: "180" },
   { value: "365d", label: "1 Año", days: "365" },
+  { value: "730d", label: "2 Años", days: "730" },
+  { value: "1095d", label: "3 Años", days: "1095" },
 ];
 
+// Colores para diferenciar hasta 5 activos distintos en el gráfico
+const COLORS = ["#a3e635", "#3b82f6", "#f59e0b", "#ec4899", "#8b5cf6"];
+
 export function RelativeStrength({ coins }: { coins: any[] }) {
-  const [baseCoin, setBaseCoin] = useState("hyperliquid");
+  const [baseCoins, setBaseCoins] = useState<string[]>(["hyperliquid"]); // Ahora es un array (Max 5)
   const [quoteCoin, setQuoteCoin] = useState("bitcoin");
   const [timeframe, setTimeframe] = useState("30d");
+  const [addValue, setAddValue] = useState("");
 
-  // Invertir monedas rápidamente
   const handleSwap = () => {
-    setBaseCoin(quoteCoin);
-    setQuoteCoin(baseCoin);
+    // Solo permitimos invertir si hay 1 solo activo base
+    if (baseCoins.length === 1) {
+      const oldBase = baseCoins[0];
+      setBaseCoins([quoteCoin]);
+      setQuoteCoin(oldBase);
+    }
   };
 
-  const tfConfig = TIMEFRAMES.find((t) => t.value === timeframe) || TIMEFRAMES[4];
+  const addBaseCoin = (id: string) => {
+    if (baseCoins.length < 5 && !baseCoins.includes(id)) {
+      setBaseCoins([...baseCoins, id]);
+    }
+  };
+
+  const removeBaseCoin = (id: string) => {
+    if (baseCoins.length > 1) {
+      setBaseCoins(baseCoins.filter(c => c !== id));
+    }
+  };
+
+  const tfConfig = TIMEFRAMES.find((t) => t.value === timeframe) || TIMEFRAMES[3];
+
+  // Armamos la lista de todos los assets necesarios (base + quote) sin repetir
+  const allCoinsToFetch = Array.from(new Set([...baseCoins, quoteCoin])).join(",");
 
   const { data, isLoading } = useSWR(
-    `/api/crypto/batch?coinIds=${baseCoin},${quoteCoin}&days=${tfConfig.days}`,
+    `/api/crypto/batch?coinIds=${allCoinsToFetch}&days=${tfConfig.days}`,
     batchFetcher,
     { revalidateOnFocus: false, dedupingInterval: 300000 }
   );
 
   const chartData = useMemo(() => {
-    if (!data?.results || !data.results[baseCoin] || !data.results[quoteCoin]) return [];
+    if (!data?.results || !data.results[quoteCoin]) return [];
     
-    const pricesA = data.results[baseCoin].prices;
-    const pricesB = data.results[quoteCoin].prices;
-    
-    if (!pricesA || !pricesB || pricesA.length === 0 || pricesB.length === 0) return [];
+    const quotePrices = data.results[quoteCoin].prices;
+    if (!quotePrices || quotePrices.length === 0) return [];
 
     const merged = [];
     const now = Date.now();
-    
-    // Filtrar por tiempo real si es 1h o 4h
-    const cutoff = timeframe === "1h" ? now - 3600 * 1000 : 
-                   timeframe === "4h" ? now - 4 * 3600 * 1000 : 0;
+    const cutoff = timeframe === "4h" ? now - 4 * 3600 * 1000 : 0;
 
-    // Sincronizar datos: por cada punto de A, buscamos el punto más cercano en B
-    for (const [tsA, priceA] of pricesA) {
-      if (tsA < cutoff) continue;
+    // Recorremos la línea de tiempo del Activo Comparativo (Quote)
+    for (const [tsQ, priceQ] of quotePrices) {
+      if (tsQ < cutoff) continue;
+      
+      const dataPoint: any = { timestamp: tsQ };
+      let hasData = false;
 
-      let closestB = pricesB[0];
-      let minDiff = Math.abs(pricesB[0][0] - tsA);
+      // Por cada punto de tiempo, buscamos el precio equivalente de cada Activo Base
+      for (const bc of baseCoins) {
+        const bPrices = data.results[bc]?.prices;
+        if (!bPrices || bPrices.length === 0) continue;
 
-      for (let i = 1; i < pricesB.length; i++) {
-        const diff = Math.abs(pricesB[i][0] - tsA);
-        if (diff < minDiff) {
-          minDiff = diff;
-          closestB = pricesB[i];
+        let closestPrice = bPrices[0][1];
+        let minDiff = Math.abs(bPrices[0][0] - tsQ);
+
+        for (let i = 1; i < bPrices.length; i++) {
+          const diff = Math.abs(bPrices[i][0] - tsQ);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestPrice = bPrices[i][1];
+          }
+        }
+
+        // Tolerancia de 1 hora para corto plazo, 12 horas para gráfico diario/largo plazo
+        const tolerance = tfConfig.days === "1" ? 3600 * 1000 : 12 * 3600 * 1000;
+        if (minDiff <= tolerance) {
+          dataPoint[bc] = closestPrice / priceQ;
+          hasData = true;
         }
       }
 
-      // Solo si la diferencia de tiempo es aceptable (ej. menos de 4 horas de desfase)
-      if (minDiff < 4 * 3600 * 1000) {
-        merged.push({
-          timestamp: tsA,
-          ratio: priceA / closestB[1],
-        });
+      if (hasData) {
+        merged.push(dataPoint);
       }
     }
 
     return merged;
-  }, [data, baseCoin, quoteCoin, timeframe]);
+  }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days]);
 
-  const baseData = coins?.find((c) => c.id === baseCoin);
   const quoteData = coins?.find((c) => c.id === quoteCoin);
-
-  // Calcular variación del ratio
-  const firstRatio = chartData[0]?.ratio || 0;
-  const lastRatio = chartData[chartData.length - 1]?.ratio || 0;
-  const variation = firstRatio > 0 ? ((lastRatio - firstRatio) / firstRatio) * 100 : 0;
-  const isPositive = variation >= 0;
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center gap-2 p-4 border border-border bg-card rounded-lg">
-        <div className="flex flex-col gap-1 w-full md:w-auto flex-1">
-          <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Activo Base</span>
-          {coins && <CoinSelector coins={coins} selectedCoinId={baseCoin} onSelect={setBaseCoin} />}
+      <div className="flex flex-wrap items-end gap-4 p-4 border border-border bg-card rounded-lg shadow-sm">
+        
+        {/* PANEL DE ACTIVOS BASE */}
+        <div className="flex flex-col gap-2 flex-1 min-w-[250px]">
+          <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Activos Base (Max 5)</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {baseCoins.map((bc, i) => {
+              const c = coins.find((x: any) => x.id === bc);
+              return (
+                <Badge key={bc} variant="outline" className="flex items-center gap-1.5 py-1.5 px-3 bg-secondary/50 text-sm">
+                  <div className="size-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
+                  <span className="font-medium text-foreground">{c?.symbol.toUpperCase()}</span>
+                  {baseCoins.length > 1 && (
+                    <button 
+                      onClick={() => removeBaseCoin(bc)} 
+                      className="ml-1 text-muted-foreground hover:text-danger transition-colors"
+                      title="Quitar activo"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </Badge>
+              )
+            })}
+            
+            {/* BOTÓN PARA AÑADIR NUEVOS ACTIVOS BASE */}
+            {baseCoins.length < 5 && (
+              <Select value={addValue} onValueChange={(id) => { addBaseCoin(id); setAddValue(""); }}>
+                <SelectTrigger className="w-fit bg-transparent border-border border-dashed h-8 text-xs px-3 shadow-none hover:bg-secondary/50 transition-colors">
+                  <Plus className="size-3.5 mr-1.5" /> Añadir 
+                </SelectTrigger>
+                <SelectContent>
+                  {coins.filter((c: any) => !baseCoins.includes(c.id) && c.id !== quoteCoin).map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name} ({c.symbol.toUpperCase()})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </div>
 
-        <button 
-          onClick={handleSwap}
-          className="mt-5 p-2 rounded-full bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          title="Invertir pares"
-        >
-          <ArrowRightLeft className="size-4" />
-        </button>
+        {/* BOTÓN SWAP (Solo si hay 1 solo activo base) */}
+        {baseCoins.length === 1 && (
+          <button 
+            onClick={handleSwap}
+            className="mb-1 p-2.5 rounded-full bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors border border-transparent hover:border-border"
+            title="Invertir par"
+          >
+            <ArrowRightLeft className="size-4" />
+          </button>
+        )}
 
-        <div className="flex flex-col gap-1 w-full md:w-auto flex-1">
+        {/* SELECTOR ACTIVO COMPARATIVO */}
+        <div className="flex flex-col gap-2 min-w-[150px]">
           <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Activo Comparativo</span>
-          {coins && <CoinSelector coins={coins} selectedCoinId={quoteCoin} onSelect={setQuoteCoin} />}
+          <CoinSelector coins={coins} selectedCoinId={quoteCoin} onSelect={setQuoteCoin} />
         </div>
 
-        <div className="flex flex-col gap-1 w-full md:w-auto">
+        {/* SELECTOR TEMPORALIDAD */}
+        <div className="flex flex-col gap-2 min-w-[140px]">
           <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Temporalidad</span>
           <Select value={timeframe} onValueChange={setTimeframe}>
-            <SelectTrigger className="w-[140px] bg-background border-border"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full bg-background border-border h-10"><SelectValue /></SelectTrigger>
             <SelectContent>
               {TIMEFRAMES.map((tf) => <SelectItem key={tf.value} value={tf.value}>{tf.label}</SelectItem>)}
             </SelectContent>
@@ -136,21 +201,14 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              Fortaleza Relativa: {baseData?.symbol.toUpperCase()} / {quoteData?.symbol.toUpperCase()}
-            </CardTitle>
-            {!isLoading && chartData.length > 0 && (
-              <div className={`px-3 py-1 rounded-full text-sm font-bold ${isPositive ? "bg-success/15 text-success" : "bg-danger/15 text-danger"}`}>
-                {isPositive ? "+" : ""}{variation.toFixed(2)}%
-              </div>
-            )}
-          </div>
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            Análisis de Fuerza Relativa contra {quoteData?.name} ({quoteData?.symbol.toUpperCase()})
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="h-[400px] flex items-center justify-center text-muted-foreground gap-2">
-              <Loader2 className="size-6 animate-spin" /> Calculando ratio...
+              <Loader2 className="size-6 animate-spin" /> Calculando ratios...
             </div>
           ) : chartData.length > 0 ? (
             <div className="h-[400px] w-full mt-4">
@@ -163,10 +221,10 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                     tick={{ fill: "oklch(0.6 0 0)", fontSize: 11 }}
                     tickFormatter={(val) => {
                       const d = new Date(val);
-                      if (timeframe === "1h" || timeframe === "4h" || timeframe === "1d") {
+                      if (timeframe === "4h" || timeframe === "1d") {
                         return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
                       }
-                      return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
+                      return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: timeframe.includes("y") || timeframe === "730d" || timeframe === "1095d" ? "2-digit" : undefined });
                     }}
                     minTickGap={40}
                   />
@@ -179,21 +237,37 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                   <Tooltip 
                     contentStyle={{ backgroundColor: "oklch(0.17 0.005 260)", borderColor: "oklch(0.25 0.005 260)", borderRadius: "8px" }}
                     labelFormatter={(label) => new Date(label as number).toLocaleString("es-ES")}
-                    formatter={(value: number) => [value.toPrecision(6), "Ratio"]}
+                    formatter={(value: number, name: string) => {
+                      const symbol = coins.find((c: any) => c.id === name)?.symbol.toUpperCase() || name;
+                      return [value.toPrecision(6), `${symbol} / ${quoteData?.symbol.toUpperCase()}`];
+                    }}
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="ratio" 
-                    stroke="var(--primary)" 
-                    strokeWidth={2} 
-                    dot={false} 
+                  <Legend 
+                    verticalAlign="top" 
+                    height={36} 
+                    formatter={(value) => {
+                      const symbol = coins.find((c: any) => c.id === value)?.symbol.toUpperCase() || value;
+                      return <span style={{ color: "var(--foreground)", fontWeight: 500, fontSize: "13px" }}>{symbol} / {quoteData?.symbol.toUpperCase()}</span>;
+                    }}
                   />
+                  {baseCoins.map((bc, i) => (
+                    <Line 
+                      key={bc}
+                      type="monotone" 
+                      dataKey={bc} 
+                      stroke={COLORS[i]} 
+                      strokeWidth={2} 
+                      dot={false} 
+                      activeDot={{ r: 4 }}
+                    />
+                  ))}
                 </LineChart>
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-[400px] flex items-center justify-center text-muted-foreground">
-              No hay suficientes datos para comparar estos dos activos.
+            <div className="h-[400px] flex flex-col items-center justify-center text-muted-foreground">
+              <ArrowRightLeft className="size-10 opacity-20 mb-4" />
+              <p>No hay suficientes datos superpuestos para comparar estos activos.</p>
             </div>
           )}
         </CardContent>
