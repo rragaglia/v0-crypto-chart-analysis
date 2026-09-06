@@ -8,13 +8,13 @@ import { EmaTable } from "@/components/ema-table";
 import { FavoritesWatchlist } from "@/components/favorites-watchlist";
 import { EmaCrossoverPanel } from "@/components/ema-crossover";
 import { ChartSkeleton, TableSkeleton } from "@/components/loading-skeletons";
+import { RelativeStrength } from "@/components/relative-strength";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { processEmaData, analyzeEmas, getMarketSummary, formatPrice, detectEmaCrossovers } from "@/lib/ema";
-import { Activity, TrendingUp, TrendingDown, RefreshCw, BarChart3, Star, Database } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, RefreshCw, BarChart3, Star, Database, ArrowRightLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getSourceDisplayName } from "@/lib/price-fetcher";
-import { RelativeStrength } from "@/components/relative-strength";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -24,11 +24,11 @@ const fetcher = async (url: string) => {
 };
 
 const TIMEFRAMES = [
-  { value: "90", label: "90 dias" },
+  { value: "90",  label: "90 dias"  },
   { value: "180", label: "180 dias" },
-  { value: "365", label: "1 ano" },
-  { value: "730", label: "2 anos" },
-  { value: "max", label: "Maximo" },
+  { value: "365", label: "1 ano"    },
+  { value: "730", label: "2 anos"   },
+  { value: "max", label: "Maximo"   },
 ];
 
 // Mapeo de puntajes máximos posibles por cada período de EMA
@@ -39,13 +39,12 @@ const MAX_SCORES: Record<number, number> = {
   200: 25,
 };
 
-// Puntaje máximo total sumando todas las EMAs (10 + 15 + 20 + 25 = 70)
-const TOTAL_MAX_SCORE = 70;
+const TOTAL_MAX_SCORE = 70; // Suma de todos los máximos
 
 export function CryptoDashboard() {
   const [selectedCoin, setSelectedCoin] = useState("bitcoin");
-  const [days, setDays] = useState("365");
-  const [activeTab, setActiveTab] = useState("analysis");
+  const [days, setDays]                 = useState("365");
+  const [activeTab, setActiveTab]       = useState("analysis");
 
   const { data: coins, error: coinsError } = useSWR("/api/crypto/coins", fetcher, {
     revalidateOnFocus: false, dedupingInterval: 600000,
@@ -57,7 +56,7 @@ export function CryptoDashboard() {
   );
 
   const handleCoinChange = useCallback((coinId: string) => setSelectedCoin(coinId), []);
-  const handleRefresh = useCallback(() => mutate(), [mutate]);
+  const handleRefresh    = useCallback(() => mutate(), [mutate]);
   const handleSelectFromFavorites = useCallback((coinId: string) => { setSelectedCoin(coinId); setActiveTab("analysis"); }, []);
 
   const selectedCoinData = coins?.find?.((c: { id: string }) => c.id === selectedCoin);
@@ -72,16 +71,10 @@ export function CryptoDashboard() {
       return { pricePoints: [], emas: [], analyses: [], summary: null, currentPrice: 0, dataWarning: "No se pudieron procesar los datos.", crossoverData: null };
     }
 
-    const currentPrice = pricePoints[pricePoints.length - 1]?.price || 0;
-
-    // ORDEN CAMBIADO AQUÍ: 
-    // 1. Calculamos los análisis individuales
-    const analyses = analyzeEmas(currentPrice, emas);
-    // 2. Calculamos los cruces primero
+    const currentPrice  = pricePoints[pricePoints.length - 1]?.price || 0;
+    const analyses      = analyzeEmas(currentPrice, emas);
     const crossoverData = detectEmaCrossovers(pricePoints, emas);
-    // 3. Le pasamos toda esa data al resumen general para que hable de ello
-    const summary = getMarketSummary(analyses, emas, crossoverData, currentPrice);
-
+    const summary       = getMarketSummary(analyses, emas, crossoverData, currentPrice);
     const missingEmas = [20, 50, 100, 200].filter((p) => !emas.find((e) => e.period === p));
     const dataWarning = missingEmas.length > 0 ? `Faltan datos para EMA ${missingEmas.join(", ")}.` : null;
 
@@ -105,35 +98,29 @@ export function CryptoDashboard() {
           </div>
           <TabsList>
             <TabsTrigger value="analysis" className="gap-1.5"><BarChart3 className="size-3.5" />Analisis</TabsTrigger>
+            <TabsTrigger value="compare" className="gap-1.5"><ArrowRightLeft className="size-3.5" />Comparar</TabsTrigger>
             <TabsTrigger value="favorites" className="gap-1.5"><Star className="size-3.5" />Favoritos</TabsTrigger>
           </TabsList>
         </div>
       </header>
 
       <TabsContent value="analysis">
-        <div className="mx-auto max-w-7xl px-4 pt-4 pb-2 flex flex-wrap items-center gap-3">
-          {coins && !coinsError && <CoinSelector coins={coins} selectedCoinId={selectedCoin} onSelect={handleCoinChange} />}
-          <Select value={days} onValueChange={setDays}>
-            <SelectTrigger className="w-[140px] bg-card border-border"><SelectValue /></SelectTrigger>
-            <SelectContent>{TIMEFRAMES.map((tf) => <SelectItem key={tf.value} value={tf.value}>{tf.label}</SelectItem>)}</SelectContent>
-          </Select>
-          <button onClick={handleRefresh} className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
-            <RefreshCw className={`size-4 ${isMarketLoading ? "animate-spin" : ""}`} />
-          </button>
-        </div>
-
         <main className="mx-auto max-w-7xl px-4 py-4 flex flex-col gap-6">
-
-          {/* Price banner */}
-          {selectedCoinData && currentPrice > 0 && (
+          
+          {/* HEADER ROW: Banner a la izquierda, Selectores a la derecha */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-1">
             <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-3">
-                <img src={selectedCoinData.image} alt={selectedCoinData.name} className="size-10 rounded-full" />
-                <div>
-                  <h2 className="text-2xl font-bold text-foreground">{formatPrice(currentPrice)}</h2>
-                  <p className="text-sm text-muted-foreground">{selectedCoinData.name} ({selectedCoinData.symbol})</p>
+              {selectedCoinData && currentPrice > 0 ? (
+                <div className="flex items-center gap-3">
+                  <img src={selectedCoinData.image} alt={selectedCoinData.name} className="size-10 rounded-full" />
+                  <div>
+                    <h2 className="text-2xl font-bold text-foreground">{formatPrice(currentPrice)}</h2>
+                    <p className="text-sm text-muted-foreground">{selectedCoinData.name} ({selectedCoinData.symbol})</p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="h-[40px] w-[180px]" />
+              )}
 
               {marketData?.source && (
                 <Badge variant="outline" className="text-xs px-2 py-1 bg-muted/30 text-muted-foreground border-muted-foreground/20">
@@ -141,21 +128,41 @@ export function CryptoDashboard() {
                   {getSourceDisplayName(marketData.source)}
                 </Badge>
               )}
-
             </div>
-          )}
+
+            <div className="flex flex-wrap items-center gap-3">
+              {coins && !coinsError && (
+                <CoinSelector coins={coins} selectedCoinId={selectedCoin} onSelect={handleCoinChange} />
+              )}
+              <Select value={days} onValueChange={setDays}>
+                <SelectTrigger className="w-[140px] bg-card border-border"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TIMEFRAMES.map((tf) => <SelectItem key={tf.value} value={tf.value}>{tf.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <button 
+                onClick={handleRefresh} 
+                className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                aria-label="Refrescar datos"
+              >
+                <RefreshCw className={`size-4 ${isMarketLoading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+          </div>
 
           {hasError && <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger text-sm">Error al cargar datos.</div>}
+          {dataWarning && !hasError && <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 text-warning text-sm">{dataWarning}</div>}
 
           {!isMarketLoading && (crossoverData || summary) && <EmaCrossoverPanel data={crossoverData} summary={summary} />}
 
-          {/* Score de Momentum */}
+          {/* Score de Momentum (ARRIBA DEL GRÁFICO) */}
           {!isMarketLoading && emas.length > 0 && (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between px-1">
                 <h3 className="text-sm font-semibold text-foreground">Score de Momentum (Basado en Pendiente)</h3>
                 <div className="text-sm font-bold px-3 py-1 bg-primary/10 text-primary rounded-full border border-primary/20 shadow-sm flex items-center gap-1">
-                  Puntaje Total: {emas.reduce((acc, ema) => acc + (ema.score || 0), 0)} <span className="opacity-60 text-xs">/ ± {TOTAL_MAX_SCORE} pts</span>
+                  Puntaje Total: {emas.reduce((acc, ema) => acc + (ema.score || 0), 0) > 0 ? "+" : ""}{emas.reduce((acc, ema) => acc + (ema.score || 0), 0)} 
+                  <span className="opacity-60 text-xs">/ ± {TOTAL_MAX_SCORE} pts</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -163,8 +170,6 @@ export function CryptoDashboard() {
                   const isPositive = (ema.score || 0) >= 0;
                   const maxScore = MAX_SCORES[ema.period] || 0;
                   const magnitude = Math.min(Math.abs(ema.score || 0), maxScore);
-
-                  // Evitamos dividir por cero en caso de un periodo no mapeado
                   const intensity = maxScore > 0 ? magnitude / maxScore : 0;
 
                   const colorBase = isPositive ? "34, 197, 94" : "239, 68, 68";
@@ -185,14 +190,13 @@ export function CryptoDashboard() {
                           <TrendingDown className="size-4" style={{ color: `rgb(${colorBase})` }} />
                         )}
                       </div>
-
+                      
                       <div className="text-3xl font-black text-foreground mt-2 relative z-10 flex items-baseline gap-1">
                         {(ema.score || 0) > 0 ? "+" : ""}{ema.score || 0}
-                        {/* Aca agregamos el limite maximo de referencia */}
                         <span className="text-base font-bold opacity-40 ml-1">/ {maxScore}</span>
                         <span className="text-xs font-medium opacity-60 ml-1">pts</span>
                       </div>
-
+                      
                       <div className="text-[11px] opacity-60 relative z-10 font-mono mt-2 tracking-tight">
                         Slope: {(ema.slopeDailyPct || 0) > 0 ? "+" : ""}{(ema.slopeDailyPct || 0).toFixed(3)}%/día
                       </div>
@@ -203,13 +207,20 @@ export function CryptoDashboard() {
             </div>
           )}
 
-          {/* Gráfico y Tabla */}
           {isMarketLoading ? <ChartSkeleton /> : pricePoints.length > 0 && <PriceChart pricePoints={pricePoints} emas={emas} coinName={selectedCoinData?.name || selectedCoin} crossovers={crossoverData?.crossovers ?? []} />}
 
           {isMarketLoading ? <TableSkeleton /> : analyses.length > 0 && summary && <EmaTable analyses={analyses} summary={summary} />}
 
         </main>
       </TabsContent>
+
+      {/* PESTAÑA COMPARAR */}
+      <TabsContent value="compare">
+        <main className="mx-auto max-w-7xl px-4 py-6">
+          {coins && !coinsError && <RelativeStrength coins={coins} />}
+        </main>
+      </TabsContent>
+
       <TabsContent value="favorites">
         <main className="mx-auto max-w-7xl px-4 py-6">
           <FavoritesWatchlist coins={coins} onSelectCoin={handleSelectFromFavorites} />
