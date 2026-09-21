@@ -46,7 +46,6 @@ const formatUsd = (price: number) => {
 };
 
 export function RelativeStrength({ coins }: { coins: any[] }) {
-  // Inyectamos el "USD" como una moneda virtual
   const extendedCoins = useMemo(() => {
     if (!coins) return [];
     if (coins.find(c => c.id === "usd")) return coins;
@@ -54,7 +53,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       id: "usd",
       symbol: "USD",
       name: "US Dollar",
-      image: "https://assets.coingecko.com/coins/images/325/small/Tether-logo.png", // Icono generico para el USD
+      image: "https://assets.coingecko.com/coins/images/325/small/Tether-logo.png",
       current_price: 1,
     };
     return [usdCoin, ...coins];
@@ -94,7 +93,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
   const tfConfig = TIMEFRAMES.find((t) => t.value === timeframe) || TIMEFRAMES[3];
   
-  // No pedimos "usd" a la API porque es virtual
   const allCoinsToFetch = Array.from(new Set([...baseCoins, quoteCoin]))
     .filter(id => id !== "usd")
     .join(",");
@@ -105,20 +103,18 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     { revalidateOnFocus: false, dedupingInterval: 300000 }
   );
 
-  const { chartData, segmentData, segmentTypeLabel } = useMemo(() => {
-    if (!data?.results && allCoinsToFetch.length > 0) return { chartData: [], segmentData: [], segmentTypeLabel: "" };
+  const { chartData, segmentData, segmentTypeLabel, segmentMetrics } = useMemo(() => {
+    if (!data?.results && allCoinsToFetch.length > 0) return { chartData: [], segmentData: [], segmentTypeLabel: "", segmentMetrics: {} };
     
-    // Elegimos una moneda base para sacar la línea de tiempo (fechas)
     const timelineCoin = quoteCoin !== "usd" ? quoteCoin : baseCoins.find(c => c !== "usd");
     const timelinePrices = timelineCoin && data?.results[timelineCoin] ? data.results[timelineCoin].prices : [];
     
-    if (!timelinePrices || timelinePrices.length === 0) return { chartData: [], segmentData: [], segmentTypeLabel: "" };
+    if (!timelinePrices || timelinePrices.length === 0) return { chartData: [], segmentData: [], segmentTypeLabel: "", segmentMetrics: {} };
 
     const rawMerged = [];
     const now = Date.now();
     const cutoff = timeframe === "4h" ? now - 4 * 3600 * 1000 : 0;
 
-    // Helper para obtener el precio en un timestamp específico
     const getClosestPrice = (coinId: string, ts: number) => {
       if (coinId === "usd") return 1;
       const prices = data.results[coinId]?.prices;
@@ -137,7 +133,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       return minDiff <= tolerance ? closestPrice : null;
     };
 
-    // 1. Armamos los ratios y precios reales punto por punto
     for (const [ts] of timelinePrices) {
       if (ts < cutoff) continue;
       
@@ -162,9 +157,8 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       }
     }
 
-    if (rawMerged.length === 0) return { chartData: [], segmentData: [], segmentTypeLabel: "" };
+    if (rawMerged.length === 0) return { chartData: [], segmentData: [], segmentTypeLabel: "", segmentMetrics: {} };
 
-    // 2. Procesar el gráfico de línea acumulado (con rebase si aplica)
     const baseRatios: Record<string, number> = {};
     const targetTs = rebaseDate || rawMerged[0].timestamp;
 
@@ -188,7 +182,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       return point;
     });
 
-    // 3. Procesar el gráfico de barras por segmentos
     let segmentType = "day";
     let segmentTypeLabel = "Día";
     if (["4h", "1d"].includes(timeframe)) { segmentType = "hour"; segmentTypeLabel = "Hora"; }
@@ -231,7 +224,20 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       return res;
     }).sort((a, b) => a.timestamp - b.timestamp);
 
-    return { chartData: finalMerged, segmentData: segData, segmentTypeLabel };
+    // CALCULAR MEDIANA Y PROMEDIO PARA CADA MONEDA EN LOS SEGMENTOS
+    const metrics: Record<string, { avg: number, median: number }> = {};
+    for (const bc of baseCoins) {
+      const returns = segData.map(d => d[bc] as number).filter(v => v !== undefined && !isNaN(v));
+      if (returns.length > 0) {
+        const avg = returns.reduce((a, b) => a + b, 0) / returns.length;
+        const sorted = [...returns].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        metrics[bc] = { avg, median };
+      }
+    }
+
+    return { chartData: finalMerged, segmentData: segData, segmentTypeLabel, segmentMetrics: metrics };
   }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate, allCoinsToFetch]);
 
   const quoteData = extendedCoins?.find((c) => c.id === quoteCoin);
@@ -444,10 +450,33 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
               {/* GRÁFICO DE BARRAS (Desglose por Segmento) */}
               {segmentData.length > 0 && (
                 <div className="mt-8 pt-6 border-t border-border">
-                  <div className="flex items-center gap-2 mb-4">
-                    <BarChart3 className="size-4 text-muted-foreground" />
-                    <h3 className="text-base font-semibold">Desglose de Rendimiento por {segmentTypeLabel}</h3>
+                  <div className="flex flex-col gap-2 mb-4">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="size-4 text-muted-foreground" />
+                      <h3 className="text-base font-semibold">Desglose de Rendimiento por {segmentTypeLabel}</h3>
+                    </div>
+                    
+                    {/* ETIQUETAS DE MEDIANA */}
+                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                      <span className="text-xs font-medium text-muted-foreground mr-1">Rendimiento típico (Mediana):</span>
+                      {baseCoins.map((bc, i) => {
+                        const metric = segmentMetrics[bc];
+                        if (!metric) return null;
+                        const isPositive = metric.median >= 0;
+                        const c = extendedCoins.find((x: any) => x.id === bc);
+                        return (
+                          <div key={`median-${bc}`} className="flex items-center gap-1.5 px-2 py-1 rounded bg-secondary/30 border border-border/50">
+                            <div className="size-2 rounded-full" style={{ backgroundColor: COLORS[i] }} />
+                            <span className="text-xs font-medium text-foreground">{c?.symbol.toUpperCase()}</span>
+                            <span className={`text-xs font-bold ${isPositive ? 'text-success' : 'text-danger'}`}>
+                              {isPositive ? "+" : ""}{metric.median.toFixed(2)}%
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
+
                   <div className="h-[250px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={segmentData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
