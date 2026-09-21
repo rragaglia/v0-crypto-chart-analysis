@@ -40,12 +40,30 @@ const TIMEFRAMES = [
 
 const COLORS = ["#a3e635", "#3b82f6", "#f59e0b", "#ec4899", "#8b5cf6"];
 
+const formatUsd = (price: number) => {
+  if (price >= 1) return price.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return price.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 6 });
+};
+
 export function RelativeStrength({ coins }: { coins: any[] }) {
+  // Inyectamos el "USD" como una moneda virtual
+  const extendedCoins = useMemo(() => {
+    if (!coins) return [];
+    if (coins.find(c => c.id === "usd")) return coins;
+    const usdCoin = {
+      id: "usd",
+      symbol: "USD",
+      name: "US Dollar",
+      image: "https://assets.coingecko.com/coins/images/325/small/Tether-logo.png", // Icono generico para el USD
+      current_price: 1,
+    };
+    return [usdCoin, ...coins];
+  }, [coins]);
+
   const [baseCoins, setBaseCoins] = useState<string[]>(["hyperliquid"]);
-  const [quoteCoin, setQuoteCoin] = useState("bitcoin");
+  const [quoteCoin, setQuoteCoin] = useState("usd");
   const [timeframe, setTimeframe] = useState("30d");
   const [addValue, setAddValue] = useState("");
-  
   const [rebaseDate, setRebaseDate] = useState<number | null>(null);
 
   const handleSwap = () => {
@@ -75,49 +93,66 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
   };
 
   const tfConfig = TIMEFRAMES.find((t) => t.value === timeframe) || TIMEFRAMES[3];
-  const allCoinsToFetch = Array.from(new Set([...baseCoins, quoteCoin])).join(",");
+  
+  // No pedimos "usd" a la API porque es virtual
+  const allCoinsToFetch = Array.from(new Set([...baseCoins, quoteCoin]))
+    .filter(id => id !== "usd")
+    .join(",");
 
   const { data, isLoading } = useSWR(
-    `/api/crypto/batch?coinIds=${allCoinsToFetch}&days=${tfConfig.days}`,
+    allCoinsToFetch.length > 0 ? `/api/crypto/batch?coinIds=${allCoinsToFetch}&days=${tfConfig.days}` : null,
     batchFetcher,
     { revalidateOnFocus: false, dedupingInterval: 300000 }
   );
 
   const { chartData, segmentData, segmentTypeLabel } = useMemo(() => {
-    if (!data?.results || !data.results[quoteCoin]) return { chartData: [], segmentData: [], segmentTypeLabel: "" };
+    if (!data?.results && allCoinsToFetch.length > 0) return { chartData: [], segmentData: [], segmentTypeLabel: "" };
     
-    const quotePrices = data.results[quoteCoin].prices;
-    if (!quotePrices || quotePrices.length === 0) return { chartData: [], segmentData: [], segmentTypeLabel: "" };
+    // Elegimos una moneda base para sacar la línea de tiempo (fechas)
+    const timelineCoin = quoteCoin !== "usd" ? quoteCoin : baseCoins.find(c => c !== "usd");
+    const timelinePrices = timelineCoin && data?.results[timelineCoin] ? data.results[timelineCoin].prices : [];
+    
+    if (!timelinePrices || timelinePrices.length === 0) return { chartData: [], segmentData: [], segmentTypeLabel: "" };
 
     const rawMerged = [];
     const now = Date.now();
     const cutoff = timeframe === "4h" ? now - 4 * 3600 * 1000 : 0;
 
-    // 1. Armamos los ratios base punto por punto
-    for (const [tsQ, priceQ] of quotePrices) {
-      if (tsQ < cutoff) continue;
+    // Helper para obtener el precio en un timestamp específico
+    const getClosestPrice = (coinId: string, ts: number) => {
+      if (coinId === "usd") return 1;
+      const prices = data.results[coinId]?.prices;
+      if (!prices || prices.length === 0) return null;
       
-      const dataPoint: any = { timestamp: tsQ, ratios: {} };
+      let minDiff = Math.abs(prices[0][0] - ts);
+      let closestPrice = prices[0][1];
+      for (let i = 1; i < prices.length; i++) {
+        const diff = Math.abs(prices[i][0] - ts);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestPrice = prices[i][1];
+        }
+      }
+      const tolerance = tfConfig.days === "1" ? 3600 * 1000 : 12 * 3600 * 1000;
+      return minDiff <= tolerance ? closestPrice : null;
+    };
+
+    // 1. Armamos los ratios y precios reales punto por punto
+    for (const [ts] of timelinePrices) {
+      if (ts < cutoff) continue;
+      
+      const priceQ = getClosestPrice(quoteCoin, ts);
+      if (priceQ === null) continue;
+
+      const dataPoint: any = { timestamp: ts, ratios: {}, pricesUSD: {} };
+      dataPoint.pricesUSD[quoteCoin] = priceQ;
       let hasData = false;
 
       for (const bc of baseCoins) {
-        const bPrices = data.results[bc]?.prices;
-        if (!bPrices || bPrices.length === 0) continue;
-
-        let closestPrice = bPrices[0][1];
-        let minDiff = Math.abs(bPrices[0][0] - tsQ);
-
-        for (let i = 1; i < bPrices.length; i++) {
-          const diff = Math.abs(bPrices[i][0] - tsQ);
-          if (diff < minDiff) {
-            minDiff = diff;
-            closestPrice = bPrices[i][1];
-          }
-        }
-
-        const tolerance = tfConfig.days === "1" ? 3600 * 1000 : 12 * 3600 * 1000;
-        if (minDiff <= tolerance) {
-          dataPoint.ratios[bc] = closestPrice / priceQ;
+        const priceB = getClosestPrice(bc, ts);
+        if (priceB !== null) {
+          dataPoint.ratios[bc] = priceB / priceQ;
+          dataPoint.pricesUSD[bc] = priceB;
           hasData = true;
         }
       }
@@ -144,7 +179,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     }
 
     const finalMerged = rawMerged.map(d => {
-      const point: any = { timestamp: d.timestamp };
+      const point: any = { timestamp: d.timestamp, pricesUSD: d.pricesUSD };
       for (const bc of baseCoins) {
         if (d.ratios[bc] !== undefined && baseRatios[bc] !== undefined) {
           point[bc] = ((d.ratios[bc] - baseRatios[bc]) / baseRatios[bc]) * 100;
@@ -163,9 +198,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
     const getBucketLabel = (ts: number, type: string) => {
       const d = new Date(ts);
-      if (type === "hour") {
-        return `${d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} ${d.getHours()}:00`;
-      }
+      if (type === "hour") return `${d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} ${d.getHours()}:00`;
       if (type === "day") return d.toLocaleDateString("es-ES", {day: "2-digit", month: "short"});
       if (type === "week") {
         const d2 = new Date(ts);
@@ -181,7 +214,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     for (const pt of rawMerged) {
       const b = getBucketLabel(pt.timestamp, segmentType);
       if (!buckets[b]) buckets[b] = { start: pt, end: pt, ts: pt.timestamp };
-      else buckets[b].end = pt; // se va actualizando hasta quedar con el último punto del bucket
+      else buckets[b].end = pt;
     }
 
     const segData = Object.keys(buckets).map(b => {
@@ -199,9 +232,9 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     }).sort((a, b) => a.timestamp - b.timestamp);
 
     return { chartData: finalMerged, segmentData: segData, segmentTypeLabel };
-  }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate]);
+  }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate, allCoinsToFetch]);
 
-  const quoteData = coins?.find((c) => c.id === quoteCoin);
+  const quoteData = extendedCoins?.find((c) => c.id === quoteCoin);
   const finalDataPoint = chartData.length > 0 ? chartData[chartData.length - 1] : null;
 
   return (
@@ -211,7 +244,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
           <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Activos Base (Max 5)</span>
           <div className="flex flex-wrap items-center gap-2">
             {baseCoins.map((bc, i) => {
-              const c = coins.find((x: any) => x.id === bc);
+              const c = extendedCoins.find((x: any) => x.id === bc);
               return (
                 <Badge key={bc} variant="outline" className="flex items-center gap-1.5 py-1.5 px-3 bg-secondary/50 text-sm">
                   <div className="size-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
@@ -235,7 +268,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                   <Plus className="size-3.5 mr-1.5" /> Añadir 
                 </SelectTrigger>
                 <SelectContent>
-                  {coins.filter((c: any) => !baseCoins.includes(c.id) && c.id !== quoteCoin).map((c: any) => (
+                  {extendedCoins.filter((c: any) => !baseCoins.includes(c.id) && c.id !== quoteCoin).map((c: any) => (
                     <SelectItem key={c.id} value={c.id}>{c.name} ({c.symbol.toUpperCase()})</SelectItem>
                   ))}
                 </SelectContent>
@@ -256,7 +289,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
         <div className="flex flex-col gap-2 min-w-[150px]">
           <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Activo Comparativo</span>
-          <CoinSelector coins={coins} selectedCoinId={quoteCoin} onSelect={setQuoteCoin} />
+          <CoinSelector coins={extendedCoins} selectedCoinId={quoteCoin} onSelect={setQuoteCoin} />
         </div>
 
         <div className="flex flex-col gap-2 min-w-[140px]">
@@ -338,16 +371,19 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                     <Tooltip 
                       contentStyle={{ backgroundColor: "oklch(0.17 0.005 260)", borderColor: "oklch(0.25 0.005 260)", borderRadius: "8px" }}
                       labelFormatter={(label) => new Date(label as number).toLocaleString("es-ES")}
-                      formatter={(value: number, name: string) => {
-                        const symbol = coins.find((c: any) => c.id === name)?.symbol.toUpperCase() || name;
-                        return [`${value > 0 ? "+" : ""}${value.toFixed(2)}%`, `${symbol} / ${quoteData?.symbol.toUpperCase()}`];
+                      formatter={(value: number, name: string, props: any) => {
+                        const symbol = extendedCoins.find((c: any) => c.id === name)?.symbol.toUpperCase() || name;
+                        const point = props.payload;
+                        const usdPrice = point.pricesUSD?.[name];
+                        const usdText = usdPrice ? ` (${formatUsd(usdPrice)})` : '';
+                        return [`${value > 0 ? "+" : ""}${value.toFixed(2)}%${usdText}`, `${symbol} / ${quoteData?.symbol.toUpperCase()}`];
                       }}
                     />
                     <Legend 
                       verticalAlign="top" 
                       height={36} 
                       formatter={(value) => {
-                        const symbol = coins.find((c: any) => c.id === value)?.symbol.toUpperCase() || value;
+                        const symbol = extendedCoins.find((c: any) => c.id === value)?.symbol.toUpperCase() || value;
                         return <span style={{ color: "var(--foreground)", fontWeight: 500, fontSize: "13px", cursor: "pointer" }}>{symbol} / {quoteData?.symbol.toUpperCase()}</span>;
                       }}
                     />
@@ -373,21 +409,29 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                 </ResponsiveContainer>
               </div>
 
-              {/* RESUMEN FINAL DE RENDIMIENTO */}
+              {/* RESUMEN FINAL DE RENDIMIENTO CON PRECIO USD */}
               {finalDataPoint && (
                 <div className="flex flex-wrap items-center justify-center gap-3 mt-6 pt-4 border-t border-border/50">
-                  <span className="text-sm font-semibold text-muted-foreground mr-2">Rendimiento acumulado:</span>
+                  <span className="text-sm font-semibold text-muted-foreground mr-2">Acumulado & Precio actual:</span>
                   {baseCoins.map((bc, i) => {
                     const value = finalDataPoint[bc];
                     if (value === undefined) return null;
                     const isPositive = value >= 0;
-                    const c = coins.find((x: any) => x.id === bc);
+                    const c = extendedCoins.find((x: any) => x.id === bc);
+                    const currentUsdPrice = finalDataPoint.pricesUSD?.[bc];
 
                     return (
                       <div key={`summary-${bc}`} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary/30 border border-border/50 shadow-sm">
                         <div className="size-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
-                        <span className="font-medium text-sm text-foreground">{c?.symbol.toUpperCase()}</span>
-                        <div className={`flex items-center gap-1 font-bold text-sm ${isPositive ? 'text-success' : 'text-danger'}`}>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="font-medium text-sm text-foreground">{c?.symbol.toUpperCase()}</span>
+                          {currentUsdPrice && (
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {formatUsd(currentUsdPrice)}
+                            </span>
+                          )}
+                        </div>
+                        <div className={`flex items-center gap-1 font-bold text-sm ml-1 border-l border-border/50 pl-2 ${isPositive ? 'text-success' : 'text-danger'}`}>
                           {isPositive ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
                           {isPositive ? "+" : ""}{value.toFixed(2)}%
                         </div>
@@ -422,7 +466,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                           cursor={{ fill: "oklch(0.15 0 0)" }}
                           contentStyle={{ backgroundColor: "oklch(0.17 0.005 260)", borderColor: "oklch(0.25 0.005 260)", borderRadius: "8px" }}
                           formatter={(value: number, name: string) => {
-                            const symbol = coins.find((c: any) => c.id === name)?.symbol.toUpperCase() || name;
+                            const symbol = extendedCoins.find((c: any) => c.id === name)?.symbol.toUpperCase() || name;
                             return [`${value > 0 ? "+" : ""}${value.toFixed(2)}%`, symbol];
                           }}
                         />
