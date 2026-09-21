@@ -224,7 +224,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       return res;
     }).sort((a, b) => a.timestamp - b.timestamp);
 
-    // CALCULAR MEDIANA Y PROMEDIO PARA CADA MONEDA EN LOS SEGMENTOS
+    // CALCULAR PROMEDIO Y MEDIANA
     const metrics: Record<string, { avg: number, median: number }> = {};
     for (const bc of baseCoins) {
       const returns = segData.map(d => d[bc] as number).filter(v => v !== undefined && !isNaN(v));
@@ -456,21 +456,33 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                       <h3 className="text-base font-semibold">Desglose de Rendimiento por {segmentTypeLabel}</h3>
                     </div>
                     
-                    {/* ETIQUETAS DE MEDIANA */}
-                    <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <span className="text-xs font-medium text-muted-foreground mr-1">Rendimiento típico (Mediana):</span>
+                    {/* ETIQUETAS DE MEDIANA Y PROMEDIO */}
+                    <div className="flex flex-wrap gap-2 mt-1">
                       {baseCoins.map((bc, i) => {
                         const metric = segmentMetrics[bc];
                         if (!metric) return null;
-                        const isPositive = metric.median >= 0;
+                        const isPosMedian = metric.median >= 0;
+                        const isPosAvg = metric.avg >= 0;
                         const c = extendedCoins.find((x: any) => x.id === bc);
                         return (
-                          <div key={`median-${bc}`} className="flex items-center gap-1.5 px-2 py-1 rounded bg-secondary/30 border border-border/50">
-                            <div className="size-2 rounded-full" style={{ backgroundColor: COLORS[i] }} />
-                            <span className="text-xs font-medium text-foreground">{c?.symbol.toUpperCase()}</span>
-                            <span className={`text-xs font-bold ${isPositive ? 'text-success' : 'text-danger'}`}>
-                              {isPositive ? "+" : ""}{metric.median.toFixed(2)}%
-                            </span>
+                          <div key={`metrics-${bc}`} className="flex items-center gap-3 px-3 py-1.5 rounded-md bg-secondary/20 border border-border/40 w-fit">
+                            <div className="flex items-center gap-1.5">
+                              <div className="size-2 rounded-full" style={{ backgroundColor: COLORS[i] }} />
+                              <span className="text-xs font-bold text-foreground">{c?.symbol.toUpperCase()}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px]">
+                              <span className="text-muted-foreground uppercase tracking-wider">Prom:</span>
+                              <span className={`font-bold text-xs ${isPosAvg ? 'text-success' : 'text-danger'}`}>
+                                {isPosAvg ? "+" : ""}{metric.avg.toFixed(2)}%
+                              </span>
+                            </div>
+                            <div className="w-px h-3 bg-border/80"></div>
+                            <div className="flex items-center gap-1.5 text-[11px]">
+                              <span className="text-muted-foreground uppercase tracking-wider">Med:</span>
+                              <span className={`font-bold text-xs ${isPosMedian ? 'text-success' : 'text-danger'}`}>
+                                {isPosMedian ? "+" : ""}{metric.median.toFixed(2)}%
+                              </span>
+                            </div>
                           </div>
                         );
                       })}
