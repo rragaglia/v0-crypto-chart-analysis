@@ -5,17 +5,20 @@ import useSWR from "swr";
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
   Legend,
-  ReferenceLine
+  ReferenceLine,
+  CartesianGrid
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CoinSelector } from "@/components/coin-selector";
-import { Loader2, ArrowRightLeft, X, Plus, Info, TrendingUp, TrendingDown } from "lucide-react";
+import { Loader2, ArrowRightLeft, X, Plus, Info, TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const batchFetcher = async (url: string) => {
@@ -80,16 +83,17 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     { revalidateOnFocus: false, dedupingInterval: 300000 }
   );
 
-  const chartData = useMemo(() => {
-    if (!data?.results || !data.results[quoteCoin]) return [];
+  const { chartData, segmentData, segmentTypeLabel } = useMemo(() => {
+    if (!data?.results || !data.results[quoteCoin]) return { chartData: [], segmentData: [], segmentTypeLabel: "" };
     
     const quotePrices = data.results[quoteCoin].prices;
-    if (!quotePrices || quotePrices.length === 0) return [];
+    if (!quotePrices || quotePrices.length === 0) return { chartData: [], segmentData: [], segmentTypeLabel: "" };
 
     const rawMerged = [];
     const now = Date.now();
     const cutoff = timeframe === "4h" ? now - 4 * 3600 * 1000 : 0;
 
+    // 1. Armamos los ratios base punto por punto
     for (const [tsQ, priceQ] of quotePrices) {
       if (tsQ < cutoff) continue;
       
@@ -123,8 +127,9 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       }
     }
 
-    if (rawMerged.length === 0) return [];
+    if (rawMerged.length === 0) return { chartData: [], segmentData: [], segmentTypeLabel: "" };
 
+    // 2. Procesar el gráfico de línea acumulado (con rebase si aplica)
     const baseRatios: Record<string, number> = {};
     const targetTs = rebaseDate || rawMerged[0].timestamp;
 
@@ -133,7 +138,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       if (!refPoint) {
         refPoint = [...rawMerged].reverse().find(d => d.timestamp <= targetTs && d.ratios[bc] !== undefined);
       }
-      
       if (refPoint) {
         baseRatios[bc] = refPoint.ratios[bc];
       }
@@ -149,18 +153,60 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       return point;
     });
 
-    return finalMerged;
+    // 3. Procesar el gráfico de barras por segmentos
+    let segmentType = "day";
+    let segmentTypeLabel = "Día";
+    if (["4h", "1d"].includes(timeframe)) { segmentType = "hour"; segmentTypeLabel = "Hora"; }
+    else if (["7d", "30d"].includes(timeframe)) { segmentType = "day"; segmentTypeLabel = "Día"; }
+    else if (["180d"].includes(timeframe)) { segmentType = "week"; segmentTypeLabel = "Semana"; }
+    else { segmentType = "month"; segmentTypeLabel = "Mes"; }
+
+    const getBucketLabel = (ts: number, type: string) => {
+      const d = new Date(ts);
+      if (type === "hour") {
+        return `${d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} ${d.getHours()}:00`;
+      }
+      if (type === "day") return d.toLocaleDateString("es-ES", {day: "2-digit", month: "short"});
+      if (type === "week") {
+        const d2 = new Date(ts);
+        const day = d2.getDay() || 7; 
+        d2.setDate(d2.getDate() - day + 1);
+        return `Sem ${d2.toLocaleDateString("es-ES", {day: "2-digit", month: "short"})}`;
+      }
+      if (type === "month") return d.toLocaleDateString("es-ES", {month: "short", year: "2-digit"});
+      return "";
+    };
+
+    const buckets: Record<string, { start: any, end: any, ts: number }> = {};
+    for (const pt of rawMerged) {
+      const b = getBucketLabel(pt.timestamp, segmentType);
+      if (!buckets[b]) buckets[b] = { start: pt, end: pt, ts: pt.timestamp };
+      else buckets[b].end = pt; // se va actualizando hasta quedar con el último punto del bucket
+    }
+
+    const segData = Object.keys(buckets).map(b => {
+      const res: any = { label: b, timestamp: buckets[b].ts };
+      for (const bc of baseCoins) {
+        const startVal = buckets[b].start.ratios[bc];
+        const endVal = buckets[b].end.ratios[bc];
+        if (startVal && endVal) {
+          res[bc] = ((endVal - startVal) / startVal) * 100;
+        } else {
+          res[bc] = 0;
+        }
+      }
+      return res;
+    }).sort((a, b) => a.timestamp - b.timestamp);
+
+    return { chartData: finalMerged, segmentData: segData, segmentTypeLabel };
   }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate]);
 
   const quoteData = coins?.find((c) => c.id === quoteCoin);
-  
-  // Extraemos el último punto de datos para mostrar el resumen final
   const finalDataPoint = chartData.length > 0 ? chartData[chartData.length - 1] : null;
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-4 p-4 border border-border bg-card rounded-lg shadow-sm">
-        
         <div className="flex flex-col gap-2 flex-1 min-w-[250px]">
           <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Activos Base (Max 5)</span>
           <div className="flex flex-wrap items-center gap-2">
@@ -256,6 +302,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
             </div>
           ) : chartData.length > 0 ? (
             <>
+              {/* GRÁFICO DE LÍNEAS (Acumulado) */}
               <div className="h-[400px] w-full mt-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart 
@@ -329,7 +376,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
               {/* RESUMEN FINAL DE RENDIMIENTO */}
               {finalDataPoint && (
                 <div className="flex flex-wrap items-center justify-center gap-3 mt-6 pt-4 border-t border-border/50">
-                  <span className="text-sm font-semibold text-muted-foreground mr-2">Rendimiento actual:</span>
+                  <span className="text-sm font-semibold text-muted-foreground mr-2">Rendimiento acumulado:</span>
                   {baseCoins.map((bc, i) => {
                     const value = finalDataPoint[bc];
                     if (value === undefined) return null;
@@ -347,6 +394,50 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* GRÁFICO DE BARRAS (Desglose por Segmento) */}
+              {segmentData.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-border">
+                  <div className="flex items-center gap-2 mb-4">
+                    <BarChart3 className="size-4 text-muted-foreground" />
+                    <h3 className="text-base font-semibold">Desglose de Rendimiento por {segmentTypeLabel}</h3>
+                  </div>
+                  <div className="h-[250px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={segmentData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="oklch(0.2 0 0)" />
+                        <XAxis 
+                          dataKey="label" 
+                          tick={{ fill: "oklch(0.6 0 0)", fontSize: 11 }}
+                          minTickGap={20}
+                        />
+                        <YAxis 
+                          width={75}
+                          tick={{ fill: "oklch(0.6 0 0)", fontSize: 11 }}
+                          tickFormatter={(val) => `${val > 0 ? "+" : ""}${val.toFixed(2)}%`}
+                        />
+                        <Tooltip 
+                          cursor={{ fill: "oklch(0.15 0 0)" }}
+                          contentStyle={{ backgroundColor: "oklch(0.17 0.005 260)", borderColor: "oklch(0.25 0.005 260)", borderRadius: "8px" }}
+                          formatter={(value: number, name: string) => {
+                            const symbol = coins.find((c: any) => c.id === name)?.symbol.toUpperCase() || name;
+                            return [`${value > 0 ? "+" : ""}${value.toFixed(2)}%`, symbol];
+                          }}
+                        />
+                        <ReferenceLine y={0} stroke="oklch(0.6 0 0)" />
+                        {baseCoins.map((bc, i) => (
+                          <Bar 
+                            key={`bar-${bc}`} 
+                            dataKey={bc} 
+                            fill={COLORS[i]} 
+                            radius={[2, 2, 0, 0]}
+                          />
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               )}
             </>
