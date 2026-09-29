@@ -302,7 +302,14 @@ Tipo: ${orderType.toUpperCase()}`;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   };
 
+  // Variables dinámicas para el gráfico dependiendo de BUY/SELL
   const maxOrderCollateral = allOrders.length > 0 ? Math.max(...allOrders.map(o => o.collateral)) : 1;
+  const isBuy = orderType === "buy";
+  const displayOrders = isBuy ? allOrders : [...allOrders].reverse();
+  const topPriceStr = isBuy ? startPriceStr : endPriceStr;
+  const bottomPriceStr = isBuy ? endPriceStr : startPriceStr;
+  const topLabel = isBuy ? "Inicio" : "Fin";
+  const bottomLabel = isBuy ? "Fin" : "Inicio";
 
   return (
     <div className="flex flex-col gap-4">
@@ -337,8 +344,8 @@ Tipo: ${orderType.toUpperCase()}`;
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="buy" className="text-xs">BUY</SelectItem>
-                  <SelectItem value="sell" className="text-xs">SELL</SelectItem>
+                  <SelectItem value="buy" className="text-xs text-success font-bold">BUY</SelectItem>
+                  <SelectItem value="sell" className="text-xs text-danger font-bold">SELL</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -356,7 +363,7 @@ Tipo: ${orderType.toUpperCase()}`;
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="currentPrice" className="text-[10px] uppercase font-bold text-muted-foreground">Actual ($)</Label>
-              <Input id="currentPrice" type="text" inputMode="decimal" className="h-8 text-xs font-mono border-primary/50 bg-primary/5" value={currentPriceStr} onChange={(e) => setCurrentPriceStr(e.target.value)} />
+              <Input id="currentPrice" type="text" inputMode="decimal" className={`h-8 text-xs font-mono border-primary/50 bg-primary/5 ${!isBuy ? "border-danger/50 bg-danger/5" : "border-success/50 bg-success/5"}`} value={currentPriceStr} onChange={(e) => setCurrentPriceStr(e.target.value)} />
             </div>
           </div>
         </CardContent>
@@ -379,29 +386,33 @@ Tipo: ${orderType.toUpperCase()}`;
               
               {/* Etiquetas de Precios Izquierda */}
               <div className="flex flex-col justify-between items-end font-mono text-[11px] text-muted-foreground h-full py-1 pr-2 border-r border-border/50">
-                <span>${parseNum(startPriceStr).toPrecision(5)}</span>
+                <span>${parseNum(topPriceStr).toPrecision(5)}</span>
                 <div className="flex items-center gap-1 opacity-50">
                   <span>{priceSpan > 0 ? "+" : ""}{priceSpan.toFixed(1)}%</span>
                 </div>
-                <span>${parseNum(endPriceStr).toPrecision(5)}</span>
+                <span>${parseNum(bottomPriceStr).toPrecision(5)}</span>
               </div>
 
               {/* Contenedor Flex Dinámico para el Gráfico */}
               <div className="flex-1 flex flex-col justify-between h-full">
-                {allOrders.map((order, i) => {
+                {displayOrders.map((order) => {
                   const widthPct = (order.collateral / maxOrderCollateral) * 100;
                   const isExecuted = order.status === "Ejecutable";
-                  // Si hay muchas órdenes, quitamos el margin inferior para que Flexbox las comprima sin overflow
                   const spacing = allOrders.length > 50 ? '0' : '1px';
                   
+                  // Lógica de color según Buy o Sell
+                  const colorClass = isBuy 
+                    ? (isExecuted ? "bg-success" : "bg-success/30 group-hover:bg-success/60")
+                    : (isExecuted ? "bg-danger"  : "bg-danger/30 group-hover:bg-danger/60");
+
                   return (
                     <div 
-                      key={`bar-${i}`} 
+                      key={`bar-${order.orderNum}`} 
                       className="w-full flex items-center group relative flex-1"
                       style={{ marginBottom: spacing }}
                     >
                       <div 
-                        className={`h-full rounded-r-sm transition-all duration-300 ${isExecuted ? "bg-primary" : "bg-primary/30 group-hover:bg-primary/60"}`}
+                        className={`h-full rounded-r-sm transition-all duration-300 ${colorClass}`}
                         style={{ width: `${widthPct}%` }}
                       />
                       {/* Tooltip Nativo CSS */}
@@ -415,12 +426,12 @@ Tipo: ${orderType.toUpperCase()}`;
 
               {/* Indicador Skew Derecha */}
               <div className="flex flex-col justify-between items-start text-[11px] text-muted-foreground h-full py-1 pl-2 border-l border-border/50">
-                <span>Inicio</span>
+                <span>{topLabel}</span>
                 <div className="flex flex-col items-center opacity-50">
                   <span className="text-[10px] uppercase font-bold">Skew</span>
                   <span className="font-mono font-bold text-foreground">{parseNum(strategySizeSkewStr).toFixed(1)}x</span>
                 </div>
-                <span>Fin</span>
+                <span>{bottomLabel}</span>
               </div>
 
             </div>
