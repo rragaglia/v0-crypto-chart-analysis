@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import useSWR from "swr";
 import {
   LineChart,
@@ -59,11 +59,54 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return [usdCoin, ...coins];
   }, [coins]);
 
-  const [baseCoins, setBaseCoins] = useState<string[]>(["hyperliquid"]);
-  const [quoteCoin, setQuoteCoin] = useState("usd");
-  const [timeframe, setTimeframe] = useState("30d");
+  // Persistencia de estados mediante localStorage
+  const [baseCoins, setBaseCoins] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("crypto-rs-baseCoins");
+      if (saved) return JSON.parse(saved);
+    }
+    return ["hyperliquid"];
+  });
+
+  const [quoteCoin, setQuoteCoin] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("crypto-rs-quoteCoin") || "usd";
+    }
+    return "usd";
+  });
+
+  const [timeframe, setTimeframe] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("crypto-rs-timeframe") || "30d";
+    }
+    return "30d";
+  });
+
+  const [rebaseDate, setRebaseDate] = useState<number | null>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("crypto-rs-rebaseDate");
+      if (saved) return JSON.parse(saved);
+    }
+    return null;
+  });
+
+  // Estado persistente para ocultar/mostrar las líneas de media y mediana (por defecto todas ocultas para no saturar, o podes dejarlas vacías para que se muestren)
+  const [hiddenLines, setHiddenLines] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("crypto-rs-hiddenLines");
+      if (saved) return JSON.parse(saved);
+    }
+    return []; // Todas visibles por defecto
+  });
+
   const [addValue, setAddValue] = useState("");
-  const [rebaseDate, setRebaseDate] = useState<number | null>(null);
+
+  // Guardar estados automáticamente
+  useEffect(() => { localStorage.setItem("crypto-rs-baseCoins", JSON.stringify(baseCoins)); }, [baseCoins]);
+  useEffect(() => { localStorage.setItem("crypto-rs-quoteCoin", quoteCoin); }, [quoteCoin]);
+  useEffect(() => { localStorage.setItem("crypto-rs-timeframe", timeframe); }, [timeframe]);
+  useEffect(() => { localStorage.setItem("crypto-rs-rebaseDate", JSON.stringify(rebaseDate)); }, [rebaseDate]);
+  useEffect(() => { localStorage.setItem("crypto-rs-hiddenLines", JSON.stringify(hiddenLines)); }, [hiddenLines]);
 
   const handleSwap = () => {
     if (baseCoins.length === 1) {
@@ -89,6 +132,13 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     if (baseCoins.length > 1) {
       setBaseCoins(baseCoins.filter(c => c !== id));
     }
+  };
+
+  const toggleLine = (coinId: string, metric: 'avg' | 'median') => {
+    const key = `${coinId}-${metric}`;
+    setHiddenLines(prev => 
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
   };
 
   const tfConfig = TIMEFRAMES.find((t) => t.value === timeframe) || TIMEFRAMES[3];
@@ -224,7 +274,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       return res;
     }).sort((a, b) => a.timestamp - b.timestamp);
 
-    // CALCULAR PROMEDIO Y MEDIANA
     const metrics: Record<string, { avg: number, median: number }> = {};
     for (const bc of baseCoins) {
       const returns = segData.map(d => d[bc] as number).filter(v => v !== undefined && !isNaN(v));
@@ -456,13 +505,15 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                       <h3 className="text-base font-semibold">Desglose de Rendimiento por {segmentTypeLabel}</h3>
                     </div>
                     
-                    {/* ETIQUETAS DE MEDIANA Y PROMEDIO */}
+                    {/* ETIQUETAS DE MEDIANA Y PROMEDIO INTERACTIVAS */}
                     <div className="flex flex-wrap gap-2 mt-1">
                       {baseCoins.map((bc, i) => {
                         const metric = segmentMetrics[bc];
                         if (!metric) return null;
-                        const isPosMedian = metric.median >= 0;
-                        const isPosAvg = metric.avg >= 0;
+                        
+                        const isAvgHidden = hiddenLines.includes(`${bc}-avg`);
+                        const isMedHidden = hiddenLines.includes(`${bc}-median`);
+
                         const c = extendedCoins.find((x: any) => x.id === bc);
                         return (
                           <div key={`metrics-${bc}`} className="flex items-center gap-3 px-3 py-1.5 rounded-md bg-secondary/20 border border-border/40 w-fit">
@@ -470,17 +521,34 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                               <div className="size-2 rounded-full" style={{ backgroundColor: COLORS[i] }} />
                               <span className="text-xs font-bold text-foreground">{c?.symbol.toUpperCase()}</span>
                             </div>
-                            <div className="flex items-center gap-1.5 text-[11px]">
-                              <span className="text-muted-foreground uppercase tracking-wider">Prom:</span>
-                              <span className={`font-bold text-xs ${isPosAvg ? 'text-success' : 'text-danger'}`}>
-                                {isPosAvg ? "+" : ""}{metric.avg.toFixed(2)}%
+                            
+                            {/* Botón PROM */}
+                            <div 
+                              className={`flex items-center gap-1.5 text-[11px] cursor-pointer transition-opacity hover:opacity-80`}
+                              onClick={() => toggleLine(bc, 'avg')}
+                              title="Mostrar/Ocultar Promedio"
+                            >
+                              <span className={`uppercase tracking-wider border-b border-dashed border-muted-foreground ${isAvgHidden ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>
+                                Prom:
+                              </span>
+                              <span className={`font-bold text-xs ${isAvgHidden ? 'text-muted-foreground line-through opacity-50' : (metric.avg >= 0 ? 'text-success' : 'text-danger')}`}>
+                                {metric.avg >= 0 ? "+" : ""}{metric.avg.toFixed(2)}%
                               </span>
                             </div>
+                            
                             <div className="w-px h-3 bg-border/80"></div>
-                            <div className="flex items-center gap-1.5 text-[11px]">
-                              <span className="text-muted-foreground uppercase tracking-wider">Med:</span>
-                              <span className={`font-bold text-xs ${isPosMedian ? 'text-success' : 'text-danger'}`}>
-                                {isPosMedian ? "+" : ""}{metric.median.toFixed(2)}%
+                            
+                            {/* Botón MED */}
+                            <div 
+                              className={`flex items-center gap-1.5 text-[11px] cursor-pointer transition-opacity hover:opacity-80`}
+                              onClick={() => toggleLine(bc, 'median')}
+                              title="Mostrar/Ocultar Mediana"
+                            >
+                              <span className={`uppercase tracking-wider border-b border-solid border-muted-foreground ${isMedHidden ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>
+                                Med:
+                              </span>
+                              <span className={`font-bold text-xs ${isMedHidden ? 'text-muted-foreground line-through opacity-50' : (metric.median >= 0 ? 'text-success' : 'text-danger')}`}>
+                                {metric.median >= 0 ? "+" : ""}{metric.median.toFixed(2)}%
                               </span>
                             </div>
                           </div>
@@ -512,6 +580,39 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                           }}
                         />
                         <ReferenceLine y={0} stroke="oklch(0.6 0 0)" />
+                        
+                        {/* Renderizado dinámico de las líneas de referencia */}
+                        {baseCoins.map((bc, i) => {
+                          const metric = segmentMetrics[bc];
+                          if (!metric) return null;
+                          const showAvg = !hiddenLines.includes(`${bc}-avg`);
+                          const showMed = !hiddenLines.includes(`${bc}-median`);
+                          
+                          const lines = [];
+                          if (showAvg) {
+                            lines.push(
+                              <ReferenceLine 
+                                key={`avg-${bc}`} 
+                                y={metric.avg} 
+                                stroke={COLORS[i]} 
+                                strokeDasharray="3 3" 
+                                strokeOpacity={0.4} 
+                              />
+                            );
+                          }
+                          if (showMed) {
+                            lines.push(
+                              <ReferenceLine 
+                                key={`med-${bc}`} 
+                                y={metric.median} 
+                                stroke={COLORS[i]} 
+                                strokeOpacity={0.6} 
+                              />
+                            );
+                          }
+                          return lines;
+                        })}
+
                         {baseCoins.map((bc, i) => (
                           <Bar 
                             key={`bar-${bc}`} 
