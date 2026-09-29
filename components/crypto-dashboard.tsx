@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { CoinSelector } from "@/components/coin-selector";
 import { PriceChart } from "@/components/price-chart";
@@ -81,6 +81,27 @@ export function CryptoDashboard() {
     return { pricePoints, emas, analyses, summary, currentPrice, dataWarning, crossoverData };
   })();
 
+  // Cálculo de ATHs y Pullbacks
+  const athStats = useMemo(() => {
+    if (!pricePoints || pricePoints.length === 0) return null;
+    
+    // ATH Global (Usamos el de la API si lo trae, sino el máximo del historial cargado)
+    let globalAth = selectedCoinData?.ath || 0;
+    const maxDataPrice = Math.max(...pricePoints.map(p => p.price));
+    if (globalAth === 0 || maxDataPrice > globalAth) {
+      globalAth = maxDataPrice;
+    }
+    const globalAthPullback = ((currentPrice - globalAth) / globalAth) * 100;
+    
+    // ATH de 1 Año (Últimos 365 días desde hoy)
+    const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
+    const lastYearPoints = pricePoints.filter(p => p.timestamp >= oneYearAgo);
+    const oneYearHigh = lastYearPoints.length > 0 ? Math.max(...lastYearPoints.map(p => p.price)) : maxDataPrice;
+    const oneYearPullback = ((currentPrice - oneYearHigh) / oneYearHigh) * 100;
+    
+    return { globalAth, globalAthPullback, oneYearHigh, oneYearPullback };
+  }, [pricePoints, selectedCoinData, currentPrice]);
+
   const hasError = coinsError || marketError;
 
   return (
@@ -100,8 +121,6 @@ export function CryptoDashboard() {
             <TabsTrigger value="analysis" className="gap-1.5"><BarChart3 className="size-3.5" />Analisis</TabsTrigger>
             <TabsTrigger value="compare" className="gap-1.5"><ArrowRightLeft className="size-3.5" />Comparar</TabsTrigger>
             <TabsTrigger value="favorites" className="gap-1.5"><Star className="size-3.5" />Favoritos</TabsTrigger>
-            
-            {/* SCALE ORDERS MOVIDO AL FINAL */}
             <TabsTrigger value="scale" className="gap-1.5"><Calculator className="size-3.5" />Scale Orders</TabsTrigger>
           </TabsList>
         </div>
@@ -109,25 +128,48 @@ export function CryptoDashboard() {
 
       <TabsContent value="analysis">
         <main className="mx-auto max-w-7xl px-4 py-4 flex flex-col gap-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-1">
-            <div className="flex flex-wrap items-center gap-4">
-              {selectedCoinData && currentPrice > 0 ? (
-                <div className="flex items-center gap-3">
-                  <img src={selectedCoinData.image} alt={selectedCoinData.name} className="size-10 rounded-full" />
-                  <div>
-                    <h2 className="text-2xl font-bold text-foreground">{formatPrice(currentPrice)}</h2>
-                    <p className="text-sm text-muted-foreground">{selectedCoinData.name} ({selectedCoinData.symbol})</p>
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mt-1">
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-4">
+                {selectedCoinData && currentPrice > 0 ? (
+                  <div className="flex items-center gap-3">
+                    <img src={selectedCoinData.image} alt={selectedCoinData.name} className="size-10 rounded-full" />
+                    <div>
+                      <h2 className="text-2xl font-bold text-foreground">{formatPrice(currentPrice)}</h2>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-muted-foreground">{selectedCoinData.name} ({selectedCoinData.symbol.toUpperCase()})</p>
+                        {marketData?.source && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted/30 text-muted-foreground border-muted-foreground/20">
+                            <Database className="size-3 mr-1 inline" />
+                            {getSourceDisplayName(marketData.source)}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-[40px] w-[180px]" />
+                )}
+              </div>
+
+              {/* SECCIÓN ATH Y PULLBACKS */}
+              {athStats && !isMarketLoading && (
+                <div className="flex flex-wrap items-center gap-2 ml-[52px]">
+                  <div className="flex items-center gap-1.5 bg-secondary/30 px-2 py-0.5 rounded border border-border/50">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase">ATH:</span>
+                    <span className="text-xs font-mono font-medium text-foreground">{formatPrice(athStats.globalAth)}</span>
+                    <span className={`text-[10px] font-bold ${athStats.globalAthPullback >= -5 ? 'text-success' : 'text-danger'}`}>
+                      {athStats.globalAthPullback > 0 ? "+" : ""}{athStats.globalAthPullback.toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-secondary/30 px-2 py-0.5 rounded border border-border/50">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Max 1 Año:</span>
+                    <span className="text-xs font-mono font-medium text-foreground">{formatPrice(athStats.oneYearHigh)}</span>
+                    <span className={`text-[10px] font-bold ${athStats.oneYearPullback >= -5 ? 'text-success' : 'text-danger'}`}>
+                      {athStats.oneYearPullback > 0 ? "+" : ""}{athStats.oneYearPullback.toFixed(2)}%
+                    </span>
                   </div>
                 </div>
-              ) : (
-                <div className="h-[40px] w-[180px]" />
-              )}
-
-              {marketData?.source && (
-                <Badge variant="outline" className="text-xs px-2 py-1 bg-muted/30 text-muted-foreground border-muted-foreground/20">
-                  <Database className="size-3 mr-1" />
-                  {getSourceDisplayName(marketData.source)}
-                </Badge>
               )}
             </div>
 
@@ -156,16 +198,17 @@ export function CryptoDashboard() {
 
           {!isMarketLoading && (crossoverData || summary) && <EmaCrossoverPanel data={crossoverData} summary={summary} />}
 
+          {/* SCORE DE MOMENTUM (VERSIÓN COMPACTA) */}
           {!isMarketLoading && emas.length > 0 && (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2.5">
               <div className="flex items-center justify-between px-1">
                 <h3 className="text-sm font-semibold text-foreground">Score de Momentum (Basado en Pendiente)</h3>
-                <div className="text-sm font-bold px-3 py-1 bg-primary/10 text-primary rounded-full border border-primary/20 shadow-sm flex items-center gap-1">
-                  Puntaje Total: {emas.reduce((acc, ema) => acc + (ema.score || 0), 0) > 0 ? "+" : ""}{emas.reduce((acc, ema) => acc + (ema.score || 0), 0)} 
-                  <span className="opacity-60 text-xs">/ ± {TOTAL_MAX_SCORE} pts</span>
+                <div className="text-xs font-bold px-2.5 py-0.5 bg-primary/10 text-primary rounded-full border border-primary/20 shadow-sm flex items-center gap-1">
+                  Total: {emas.reduce((acc, ema) => acc + (ema.score || 0), 0) > 0 ? "+" : ""}{emas.reduce((acc, ema) => acc + (ema.score || 0), 0)} 
+                  <span className="opacity-60 text-[10px]">/ ± {TOTAL_MAX_SCORE}</span>
                 </div>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {emas.map((ema) => {
                   const isPositive = (ema.score || 0) >= 0;
                   const maxScore = MAX_SCORES[ema.period] || 0;
@@ -179,25 +222,24 @@ export function CryptoDashboard() {
                   return (
                     <div
                       key={`score-${ema.period}`}
-                      className="rounded-lg border p-4 flex flex-col gap-1 relative overflow-hidden transition-all hover:scale-[1.02]"
+                      className="rounded-md border p-3 flex flex-col gap-0.5 relative overflow-hidden transition-all hover:scale-[1.02]"
                       style={{ background: bgGradient, borderColor }}
                     >
                       <div className="flex items-center justify-between relative z-10">
-                        <span className="text-sm font-bold" style={{ color: ema.color }}>{ema.label}</span>
-                        {(ema.score || 0) >= 0 ? (
-                          <TrendingUp className="size-4" style={{ color: `rgb(${colorBase})` }} />
+                        <span className="text-xs font-bold" style={{ color: ema.color }}>{ema.label}</span>
+                        {isPositive ? (
+                          <TrendingUp className="size-3.5" style={{ color: `rgb(${colorBase})` }} />
                         ) : (
-                          <TrendingDown className="size-4" style={{ color: `rgb(${colorBase})` }} />
+                          <TrendingDown className="size-3.5" style={{ color: `rgb(${colorBase})` }} />
                         )}
                       </div>
                       
-                      <div className="text-3xl font-black text-foreground mt-2 relative z-10 flex items-baseline gap-1">
-                        {(ema.score || 0) > 0 ? "+" : ""}{ema.score || 0}
-                        <span className="text-base font-bold opacity-40 ml-1">/ {maxScore}</span>
-                        <span className="text-xs font-medium opacity-60 ml-1">pts</span>
+                      <div className="text-xl font-black text-foreground mt-0.5 relative z-10 flex items-baseline gap-1">
+                        {isPositive && (ema.score || 0) > 0 ? "+" : ""}{ema.score || 0}
+                        <span className="text-[11px] font-bold opacity-40 ml-0.5">/ {maxScore} pts</span>
                       </div>
                       
-                      <div className="text-[11px] opacity-60 relative z-10 font-mono mt-2 tracking-tight">
+                      <div className="text-[10px] opacity-60 relative z-10 font-mono mt-1 tracking-tight">
                         Slope: {(ema.slopeDailyPct || 0) > 0 ? "+" : ""}{(ema.slopeDailyPct || 0).toFixed(3)}%/día
                       </div>
                     </div>
@@ -225,7 +267,6 @@ export function CryptoDashboard() {
         </main>
       </TabsContent>
 
-      {/* NUEVA PESTAÑA SCALE ORDERS AL FINAL */}
       <TabsContent value="scale">
         <main className="mx-auto max-w-7xl px-4 py-6">
           {coins && !coinsError && <ScaleOrdersCalculator coins={coins} />}
