@@ -81,25 +81,51 @@ export function CryptoDashboard() {
     return { pricePoints, emas, analyses, summary, currentPrice, dataWarning, crossoverData };
   })();
 
-  // Cálculo de ATHs y Pullbacks
+  // Cálculo de ATHs, Pullbacks y Días
   const athStats = useMemo(() => {
     if (!pricePoints || pricePoints.length === 0) return null;
     
-    // ATH Global (Usamos el de la API si lo trae, sino el máximo del historial cargado)
-    let globalAth = selectedCoinData?.ath || 0;
-    const maxDataPrice = Math.max(...pricePoints.map(p => p.price));
-    if (globalAth === 0 || maxDataPrice > globalAth) {
-      globalAth = maxDataPrice;
+    const now = Date.now();
+
+    // Encontrar el máximo dentro de los datos cargados en el gráfico
+    let maxDataPoint = pricePoints[0];
+    for (const p of pricePoints) {
+      if (p.price > maxDataPoint.price) maxDataPoint = p;
     }
+
+    // ATH Global
+    let globalAth = selectedCoinData?.ath || 0;
+    let globalAthTs = maxDataPoint.timestamp;
+
+    if (globalAth === 0 || maxDataPoint.price >= globalAth) {
+      globalAth = maxDataPoint.price;
+      globalAthTs = maxDataPoint.timestamp;
+    } else if (selectedCoinData?.ath_date) {
+      globalAthTs = new Date(selectedCoinData.ath_date).getTime();
+    } else {
+      globalAthTs = 0; // Desconocido si la API no lo trae y no está en el gráfico
+    }
+
     const globalAthPullback = ((currentPrice - globalAth) / globalAth) * 100;
+    const daysSinceGlobalAth = globalAthTs ? Math.max(0, Math.floor((now - globalAthTs) / 86400000)) : null;
     
     // ATH de 1 Año (Últimos 365 días desde hoy)
-    const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
+    const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
     const lastYearPoints = pricePoints.filter(p => p.timestamp >= oneYearAgo);
-    const oneYearHigh = lastYearPoints.length > 0 ? Math.max(...lastYearPoints.map(p => p.price)) : maxDataPrice;
-    const oneYearPullback = ((currentPrice - oneYearHigh) / oneYearHigh) * 100;
     
-    return { globalAth, globalAthPullback, oneYearHigh, oneYearPullback };
+    let oneYearHighPoint = lastYearPoints.length > 0 ? lastYearPoints[0] : maxDataPoint;
+    for (const p of lastYearPoints) {
+      if (p.price > oneYearHighPoint.price) oneYearHighPoint = p;
+    }
+
+    const oneYearHigh = oneYearHighPoint.price;
+    const oneYearPullback = ((currentPrice - oneYearHigh) / oneYearHigh) * 100;
+    const daysSinceOneYearHigh = Math.max(0, Math.floor((now - oneYearHighPoint.timestamp) / 86400000));
+    
+    return { 
+      globalAth, globalAthPullback, daysSinceGlobalAth,
+      oneYearHigh, oneYearPullback, daysSinceOneYearHigh 
+    };
   }, [pricePoints, selectedCoinData, currentPrice]);
 
   const hasError = coinsError || marketError;
@@ -129,7 +155,7 @@ export function CryptoDashboard() {
       <TabsContent value="analysis">
         <main className="mx-auto max-w-7xl px-4 py-4 flex flex-col gap-6">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mt-1">
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-4">
                 {selectedCoinData && currentPrice > 0 ? (
                   <div className="flex items-center gap-3">
@@ -154,26 +180,34 @@ export function CryptoDashboard() {
 
               {/* SECCIÓN ATH Y PULLBACKS */}
               {athStats && !isMarketLoading && (
-                <div className="flex flex-wrap items-center gap-2 ml-[52px]">
-                  <div className="flex items-center gap-1.5 bg-secondary/30 px-2 py-0.5 rounded border border-border/50">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase">ATH:</span>
-                    <span className="text-xs font-mono font-medium text-foreground">{formatPrice(athStats.globalAth)}</span>
-                    <span className={`text-[10px] font-bold ${athStats.globalAthPullback >= -5 ? 'text-success' : 'text-danger'}`}>
+                <div className="flex flex-wrap items-center gap-3 ml-[52px]">
+                  <div className="flex items-center gap-2 bg-secondary/30 px-3 py-1.5 rounded-md border border-border/60 shadow-sm">
+                    <span className="text-xs font-bold text-muted-foreground uppercase">ATH:</span>
+                    <span className="text-sm font-mono font-bold text-foreground">{formatPrice(athStats.globalAth)}</span>
+                    <span className={`text-xs font-bold ${athStats.globalAthPullback >= -5 ? 'text-success' : 'text-danger'}`}>
                       {athStats.globalAthPullback > 0 ? "+" : ""}{athStats.globalAthPullback.toFixed(2)}%
                     </span>
+                    {athStats.daysSinceGlobalAth !== null && (
+                      <span className="text-[11px] font-medium text-muted-foreground ml-1 border-l border-border/60 pl-2">
+                        Hace {athStats.daysSinceGlobalAth} días
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1.5 bg-secondary/30 px-2 py-0.5 rounded border border-border/50">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Max 1 Año:</span>
-                    <span className="text-xs font-mono font-medium text-foreground">{formatPrice(athStats.oneYearHigh)}</span>
-                    <span className={`text-[10px] font-bold ${athStats.oneYearPullback >= -5 ? 'text-success' : 'text-danger'}`}>
+                  <div className="flex items-center gap-2 bg-secondary/30 px-3 py-1.5 rounded-md border border-border/60 shadow-sm">
+                    <span className="text-xs font-bold text-muted-foreground uppercase">Max 1 Año:</span>
+                    <span className="text-sm font-mono font-bold text-foreground">{formatPrice(athStats.oneYearHigh)}</span>
+                    <span className={`text-xs font-bold ${athStats.oneYearPullback >= -5 ? 'text-success' : 'text-danger'}`}>
                       {athStats.oneYearPullback > 0 ? "+" : ""}{athStats.oneYearPullback.toFixed(2)}%
+                    </span>
+                    <span className="text-[11px] font-medium text-muted-foreground ml-1 border-l border-border/60 pl-2">
+                      Hace {athStats.daysSinceOneYearHigh} días
                     </span>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 mt-1 md:mt-0">
               {coins && !coinsError && (
                 <CoinSelector coins={coins} selectedCoinId={selectedCoin} onSelect={handleCoinChange} />
               )}
