@@ -9,7 +9,7 @@ import { FavoritesWatchlist } from "@/components/favorites-watchlist";
 import { EmaCrossoverPanel } from "@/components/ema-crossover";
 import { ChartSkeleton, TableSkeleton } from "@/components/loading-skeletons";
 import { RelativeStrength } from "@/components/relative-strength";
-import { ScaleOrdersCalculator } from "@/components/scale-orders-calculator";
+import { ScaleOrdersCalculator } from "@/components/crypto-dashboard";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { processEmaData, analyzeEmas, getMarketSummary, formatPrice, detectEmaCrossovers } from "@/lib/ema";
