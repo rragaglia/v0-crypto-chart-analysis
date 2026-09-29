@@ -7,8 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { CoinSelector } from "@/components/coin-selector";
-import { Calculator, Copy, Check, Info, BookmarkPlus, Trash2 } from "lucide-react";
+import { Calculator, Copy, Check, Info, BookmarkPlus, Trash2, ArrowDownUp, TriangleRight } from "lucide-react";
 
 interface Order {
   orderNum: number;
@@ -63,16 +62,23 @@ function calculateSizeDistribution(numOrders: number, sizeSkew: number): number[
   return sizes.map((size) => size / total);
 }
 
-export function ScaleOrdersCalculator({ coins }: { coins: any[] }) {
-  const [selectedCoinId, setSelectedCoinId] = useState("bitcoin");
-  const [totalCollateral, setTotalCollateral] = useState<number>(1000);
-  const [totalOrders, setTotalOrders] = useState<number>(100);
-  const [strategySizeSkew, setStrategySizeSkew] = useState<number>(2.0);
-  const [startPrice, setStartPrice] = useState<number>(20);
-  const [endPrice, setEndPrice] = useState<number>(10);
+// Función auxiliar para transformar inputs con coma en números flotantes seguros
+const parseNum = (val: string, fallback: number = 0) => {
+  const parsed = parseFloat(val.replace(",", "."));
+  return isNaN(parsed) ? fallback : parsed;
+};
+
+export function ScaleOrdersCalculator({ coins }: { coins?: any[] }) {
+  // Manejo de estado 100% como Strings para permitir "vacío", "comas" y evitar ceros a la izquierda
+  const [totalCollateralStr, setTotalCollateralStr] = useState("1000");
+  const [totalOrdersStr, setTotalOrdersStr] = useState("100");
+  const [strategySizeSkewStr, setStrategySizeSkewStr] = useState("2.0");
+  const [startPriceStr, setStartPriceStr] = useState("20");
+  const [endPriceStr, setEndPriceStr] = useState("10");
+  const [totalSegmentsStr, setTotalSegmentsStr] = useState("4");
+  const [currentPriceStr, setCurrentPriceStr] = useState("18");
+  
   const [orderType, setOrderType] = useState<"buy" | "sell">("buy");
-  const [totalSegments, setTotalSegments] = useState<number>(4);
-  const [currentPrice, setCurrentPrice] = useState<number>(18);
   const [selectedSegmentIdx, setSelectedSegmentIdx] = useState<number>(0);
 
   const [savedConfigs, setSavedConfigs] = useState<SavedConfig[]>([]);
@@ -88,23 +94,16 @@ export function ScaleOrdersCalculator({ coins }: { coins: any[] }) {
     }
   }, []);
 
-  const handleCoinChange = (coinId: string) => {
-    setSelectedCoinId(coinId);
-    const coin = coins?.find((c) => c.id === coinId);
-    if (coin && coin.current_price > 0) {
-      const p = coin.current_price;
-      setCurrentPrice(p);
-      if (orderType === "buy") {
-        setStartPrice(Number((p * 0.98).toPrecision(5)));
-        setEndPrice(Number((p * 0.75).toPrecision(5)));
-      } else {
-        setStartPrice(Number((p * 1.02).toPrecision(5)));
-        setEndPrice(Number((p * 1.30).toPrecision(5)));
-      }
-    }
-  };
+  // Cálculo principal convirtiendo strings a números en tiempo real
+  const { segments, allOrders, maxPnL, priceSpan } = useMemo(() => {
+    const totalCollateral = parseNum(totalCollateralStr);
+    const totalOrders = Math.floor(parseNum(totalOrdersStr));
+    const strategySizeSkew = parseNum(strategySizeSkewStr, 1);
+    const startPrice = parseNum(startPriceStr);
+    const endPrice = parseNum(endPriceStr);
+    const totalSegments = Math.floor(parseNum(totalSegmentsStr, 1));
+    const currentPrice = parseNum(currentPriceStr);
 
-  const { segments } = useMemo(() => {
     if (
       totalCollateral <= 0 ||
       totalOrders <= 0 ||
@@ -112,7 +111,7 @@ export function ScaleOrdersCalculator({ coins }: { coins: any[] }) {
       startPrice <= 0 ||
       endPrice <= 0
     ) {
-      return { segments: [] };
+      return { segments: [], allOrders: [], maxPnL: 0, priceSpan: 0 };
     }
 
     const fullSizeDistribution = calculateSizeDistribution(totalOrders, strategySizeSkew);
@@ -128,6 +127,7 @@ export function ScaleOrdersCalculator({ coins }: { coins: any[] }) {
     const extraOrders = totalOrders % totalSegments;
 
     const resultSegments: Segment[] = [];
+    const globalOrders: Order[] = [];
     let orderIndex = 0;
 
     for (let segmentNum = 1; segmentNum <= totalSegments; segmentNum++) {
@@ -167,13 +167,16 @@ export function ScaleOrdersCalculator({ coins }: { coins: any[] }) {
           status = "Ejecutable";
         }
 
-        segmentOrders.push({
+        const newOrder: Order = {
           orderNum: globalOrderIndex + 1,
           price: orderPrice,
           collateral,
           relativeSize: finalDistribution[globalOrderIndex],
           status,
-        });
+        };
+
+        segmentOrders.push(newOrder);
+        globalOrders.push(newOrder);
       }
 
       const executableOrders = segmentOrders.filter((o) => o.status === "Ejecutable").length;
@@ -204,15 +207,32 @@ export function ScaleOrdersCalculator({ coins }: { coins: any[] }) {
       orderIndex += segmentOrderCount;
     }
 
-    return { segments: resultSegments };
+    // Cálculos Finales para el gráfico
+    const priceSpan = ((endPrice - startPrice) / startPrice) * 100;
+    
+    let totalTokens = 0;
+    let totalSpent = 0;
+    globalOrders.forEach(o => {
+      totalTokens += (o.collateral / o.price);
+      totalSpent += o.collateral;
+    });
+
+    let maxPnL = 0;
+    if (orderType === "buy") {
+      maxPnL = (totalTokens * endPrice) - totalSpent; 
+    } else {
+      maxPnL = totalSpent - (totalTokens * endPrice); 
+    }
+
+    return { segments: resultSegments, allOrders: globalOrders, maxPnL, priceSpan };
   }, [
-    totalCollateral,
-    totalOrders,
-    strategySizeSkew,
-    startPrice,
-    endPrice,
-    totalSegments,
-    currentPrice,
+    totalCollateralStr,
+    totalOrdersStr,
+    strategySizeSkewStr,
+    startPriceStr,
+    endPriceStr,
+    totalSegmentsStr,
+    currentPriceStr,
     orderType,
   ]);
 
@@ -239,14 +259,14 @@ Tipo: ${orderType.toUpperCase()}`;
       date: new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }),
       timestamp: Date.now(),
       parameters: {
-        totalCollateral,
-        totalOrders,
-        strategySizeSkew,
-        startPrice,
-        endPrice,
+        totalCollateral: parseNum(totalCollateralStr),
+        totalOrders: parseNum(totalOrdersStr),
+        strategySizeSkew: parseNum(strategySizeSkewStr),
+        startPrice: parseNum(startPriceStr),
+        endPrice: parseNum(endPriceStr),
         orderType,
-        totalSegments,
-        currentPrice,
+        totalSegments: parseNum(totalSegmentsStr),
+        currentPrice: parseNum(currentPriceStr),
       },
     };
     const updated = [newConfig, ...savedConfigs.filter((c) => c.name !== newConfig.name)];
@@ -256,14 +276,14 @@ Tipo: ${orderType.toUpperCase()}`;
   };
 
   const handleLoadConfig = (cfg: SavedConfig) => {
-    setTotalCollateral(cfg.parameters.totalCollateral);
-    setTotalOrders(cfg.parameters.totalOrders);
-    setStrategySizeSkew(cfg.parameters.strategySizeSkew);
-    setStartPrice(cfg.parameters.startPrice);
-    setEndPrice(cfg.parameters.endPrice);
+    setTotalCollateralStr(cfg.parameters.totalCollateral.toString());
+    setTotalOrdersStr(cfg.parameters.totalOrders.toString());
+    setStrategySizeSkewStr(cfg.parameters.strategySizeSkew.toString());
+    setStartPriceStr(cfg.parameters.startPrice.toString());
+    setEndPriceStr(cfg.parameters.endPrice.toString());
     setOrderType(cfg.parameters.orderType);
-    setTotalSegments(cfg.parameters.totalSegments);
-    setCurrentPrice(cfg.parameters.currentPrice);
+    setTotalSegmentsStr(cfg.parameters.totalSegments.toString());
+    setCurrentPriceStr(cfg.parameters.currentPrice.toString());
   };
 
   const handleDeleteConfig = (name: string) => {
@@ -272,36 +292,31 @@ Tipo: ${orderType.toUpperCase()}`;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   };
 
+  const maxOrderCollateral = allOrders.length > 0 ? Math.max(...allOrders.map(o => o.collateral)) : 1;
+
   return (
     <div className="flex flex-col gap-4">
       {/* TARJETA SUPERIOR: CONFIGURACIÓN PRINCIPAL COMPACTA */}
       <Card>
-        <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between">
+        <CardHeader className="pb-2 pt-4 px-4">
           <div className="flex items-center gap-2">
             <Calculator className="size-4 text-primary" />
-            <CardTitle className="text-sm">Configuración de Scale</CardTitle>
-          </div>
-          <div className="flex items-center gap-2">
-            {coins && (
-              <div className="w-[160px]">
-                <CoinSelector coins={coins} selectedCoinId={selectedCoinId} onSelect={handleCoinChange} />
-              </div>
-            )}
+            <CardTitle className="text-sm">Configuración de Scale Orders</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="px-4 pb-4">
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
             <div className="flex flex-col gap-1">
               <Label htmlFor="totalCollateral" className="text-[10px] uppercase font-bold text-muted-foreground">Colateral ($)</Label>
-              <Input id="totalCollateral" type="number" className="h-8 text-xs font-mono" step="10" value={totalCollateral} onChange={(e) => setTotalCollateral(parseFloat(e.target.value) || 0)} />
+              <Input id="totalCollateral" type="text" inputMode="decimal" className="h-8 text-xs font-mono" value={totalCollateralStr} onChange={(e) => setTotalCollateralStr(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="totalOrders" className="text-[10px] uppercase font-bold text-muted-foreground">Órdenes</Label>
-              <Input id="totalOrders" type="number" className="h-8 text-xs font-mono" min="1" value={totalOrders} onChange={(e) => setTotalOrders(parseInt(e.target.value) || 1)} />
+              <Input id="totalOrders" type="text" inputMode="numeric" className="h-8 text-xs font-mono" value={totalOrdersStr} onChange={(e) => setTotalOrdersStr(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="strategySizeSkew" className="text-[10px] uppercase font-bold text-muted-foreground">Size Skew</Label>
-              <Input id="strategySizeSkew" type="number" className="h-8 text-xs font-mono" step="0.1" min="0.1" value={strategySizeSkew} onChange={(e) => setStrategySizeSkew(parseFloat(e.target.value) || 1)} />
+              <Input id="strategySizeSkew" type="text" inputMode="decimal" className="h-8 text-xs font-mono" value={strategySizeSkewStr} onChange={(e) => setStrategySizeSkewStr(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="orderType" className="text-[10px] uppercase font-bold text-muted-foreground">Tipo</Label>
@@ -317,27 +332,87 @@ Tipo: ${orderType.toUpperCase()}`;
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="startPrice" className="text-[10px] uppercase font-bold text-muted-foreground">Inicio ($)</Label>
-              <Input id="startPrice" type="number" className="h-8 text-xs font-mono" step="any" value={startPrice} onChange={(e) => setStartPrice(parseFloat(e.target.value) || 0)} />
+              <Input id="startPrice" type="text" inputMode="decimal" className="h-8 text-xs font-mono" value={startPriceStr} onChange={(e) => setStartPriceStr(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="endPrice" className="text-[10px] uppercase font-bold text-muted-foreground">Fin ($)</Label>
-              <Input id="endPrice" type="number" className="h-8 text-xs font-mono" step="any" value={endPrice} onChange={(e) => setEndPrice(parseFloat(e.target.value) || 0)} />
+              <Input id="endPrice" type="text" inputMode="decimal" className="h-8 text-xs font-mono" value={endPriceStr} onChange={(e) => setEndPriceStr(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="totalSegments" className="text-[10px] uppercase font-bold text-muted-foreground">Segmentos</Label>
-              <Input id="totalSegments" type="number" className="h-8 text-xs font-mono" min="1" max="20" value={totalSegments} onChange={(e) => { const val = parseInt(e.target.value) || 1; setTotalSegments(val); if (selectedSegmentIdx >= val) setSelectedSegmentIdx(0); }} />
+              <Input id="totalSegments" type="text" inputMode="numeric" className="h-8 text-xs font-mono" value={totalSegmentsStr} onChange={(e) => setTotalSegmentsStr(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="currentPrice" className="text-[10px] uppercase font-bold text-muted-foreground">Actual ($)</Label>
-              <Input id="currentPrice" type="number" className="h-8 text-xs font-mono border-primary/50 bg-primary/5" step="any" value={currentPrice} onChange={(e) => setCurrentPrice(parseFloat(e.target.value) || 0)} />
+              <Input id="currentPrice" type="text" inputMode="decimal" className="h-8 text-xs font-mono border-primary/50 bg-primary/5" value={currentPriceStr} onChange={(e) => setCurrentPriceStr(e.target.value)} />
             </div>
-          </div>
-          <div className="flex items-center gap-1.5 mt-3 text-[10px] text-muted-foreground">
-            <Info className="size-3 text-primary shrink-0" />
-            <span><strong>Size Skew:</strong> Proporción de tamaño entre la última orden y la primera (ej. 2.0 = el doble de grande).</span>
           </div>
         </CardContent>
       </Card>
+
+      {/* PIRÁMIDE DE RIESGO Y COLATERAL */}
+      {allOrders.length > 0 && (
+        <Card className="bg-card">
+          <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ArrowDownUp className="size-4 text-primary" />
+              <CardTitle className="text-sm">Pirámide de Riesgo y Distribución</CardTitle>
+            </div>
+            <Badge variant="outline" className={`font-mono ${maxPnL >= 0 ? "text-success border-success/30 bg-success/10" : "text-danger border-danger/30 bg-danger/10"}`}>
+              PnL Latente al llegar a fin: {maxPnL >= 0 ? "+" : "-"}${Math.abs(maxPnL).toFixed(2)}
+            </Badge>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="flex gap-4 items-stretch h-[220px] bg-secondary/20 p-4 rounded-lg border border-border/50">
+              
+              {/* Etiquetas de Precios Izquierda */}
+              <div className="flex flex-col justify-between items-end font-mono text-[11px] text-muted-foreground h-full py-1 pr-2 border-r border-border/50">
+                <span>${parseNum(startPriceStr).toPrecision(5)}</span>
+                <div className="flex items-center gap-1 opacity-50">
+                  <span>{priceSpan > 0 ? "+" : ""}{priceSpan.toFixed(1)}%</span>
+                </div>
+                <span>${parseNum(endPriceStr).toPrecision(5)}</span>
+              </div>
+
+              {/* Contenedor del Gráfico de Barras */}
+              <div className="flex-1 flex flex-col justify-between py-1 h-full gap-[1px]">
+                {allOrders.map((order, i) => {
+                  const widthPct = (order.collateral / maxOrderCollateral) * 100;
+                  // Si el precio actual ya pasó por acá, lo marcamos diferente
+                  const isExecuted = order.status === "Ejecutable";
+                  
+                  return (
+                    <div 
+                      key={`bar-${i}`} 
+                      className="w-full flex items-center group relative h-full min-h-[2px]"
+                    >
+                      <div 
+                        className={`h-full rounded-r-sm transition-all duration-300 ${isExecuted ? "bg-primary" : "bg-primary/30 group-hover:bg-primary/60"}`}
+                        style={{ width: `${widthPct}%` }}
+                      />
+                      {/* Tooltip Nativo CSS */}
+                      <div className="hidden group-hover:flex absolute left-1/2 -translate-x-1/2 -top-8 z-10 bg-popover border border-border text-popover-foreground text-[10px] px-2 py-1 rounded shadow-lg whitespace-nowrap">
+                        Ord #{order.orderNum} | Precio: ${order.price.toPrecision(5)} \vert{} Colateral:${order.collateral.toFixed(2)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Indicador Skew Derecha */}
+              <div className="flex flex-col justify-between items-start text-[11px] text-muted-foreground h-full py-1 pl-2 border-l border-border/50">
+                <span>Inicio</span>
+                <div className="flex flex-col items-center opacity-50">
+                  <span className="text-[10px] uppercase font-bold">Skew</span>
+                  <span className="font-mono font-bold text-foreground">{parseNum(strategySizeSkewStr).toFixed(1)}x</span>
+                </div>
+                <span>Fin</span>
+              </div>
+
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* TABLA GENERAL DE SEGMENTOS */}
       {segments.length > 0 && (
@@ -364,9 +439,10 @@ Tipo: ${orderType.toUpperCase()}`;
                 <TableBody>
                   {segments.map((seg, idx) => {
                     let segmentPnL = 0;
+                    const currentPr = parseNum(currentPriceStr);
                     seg.orders.forEach((order) => {
                       if (order.status === "Ejecutable") {
-                        const priceDiff = orderType === "buy" ? currentPrice - order.price : order.price - currentPrice;
+                        const priceDiff = orderType === "buy" ? currentPr - order.price : order.price - currentPr;
                         const tokens = order.collateral / order.price;
                         segmentPnL += tokens * priceDiff;
                       }
@@ -383,7 +459,7 @@ Tipo: ${orderType.toUpperCase()}`;
                       >
                         <TableCell className="font-bold text-xs py-2">{seg.segmentNum}</TableCell>
                         <TableCell className="font-mono text-xs py-2">
-                          ${seg.startPrice.toFixed(4)} →${seg.endPrice.toFixed(4)}
+                          ${seg.startPrice.toPrecision(5)} →${seg.endPrice.toPrecision(5)}
                         </TableCell>
                         <TableCell className="text-right font-mono font-medium text-xs py-2">
                           ${seg.collateral.toFixed(2)}
@@ -450,8 +526,9 @@ Tipo: ${orderType.toUpperCase()}`;
                     {activeSegment.orders.map((order, i) => {
                       const segmentPercentage = ((order.collateral / activeSegment.collateral) * 100).toFixed(1);
                       let orderPnL = 0;
+                      const currentPr = parseNum(currentPriceStr);
                       if (order.status === "Ejecutable") {
-                        const priceDiff = orderType === "buy" ? currentPrice - order.price : order.price - currentPrice;
+                        const priceDiff = orderType === "buy" ? currentPr - order.price : order.price - currentPr;
                         const tokens = order.collateral / order.price;
                         orderPnL = tokens * priceDiff;
                       }
@@ -459,9 +536,9 @@ Tipo: ${orderType.toUpperCase()}`;
                       const pnlText = orderPnL === 0 ? "$0.00" : `${isPos ? "+" : "-"}$${Math.abs(orderPnL).toFixed(2)}`;
 
                       return (
-                        <TableRow key={`order-${i}`} className="border-border/30">
+                        <TableRow key={`order-${i}`} className="border-border/30 hover:bg-secondary/10">
                           <TableCell className="text-muted-foreground font-mono text-[11px] py-1.5">{order.orderNum}</TableCell>
-                          <TableCell className="font-mono text-[11px] font-semibold py-1.5">${order.price.toFixed(4)}</TableCell>
+                          <TableCell className="font-mono text-[11px] font-semibold py-1.5">${order.price.toPrecision(5)}</TableCell>
                           <TableCell className="text-right font-mono text-[11px] py-1.5">${order.collateral.toFixed(2)}</TableCell>
                           <TableCell className="text-center font-mono text-[11px] text-muted-foreground py-1.5">{segmentPercentage}%</TableCell>
                           <TableCell className={`text-right font-mono text-[11px] font-bold py-1.5 ${orderPnL === 0 ? "text-muted-foreground" : isPos ? "text-success" : "text-danger"}`}>
@@ -509,7 +586,7 @@ Tipo: ${orderType.toUpperCase()}`;
             <div className="flex flex-col gap-2 max-h-[200px] overflow-y-auto pr-1">
               {savedConfigs.length > 0 ? (
                 savedConfigs.map((cfg) => (
-                  <div key={cfg.name} className="flex items-center justify-between p-2 rounded-md border border-border/60 bg-secondary/20">
+                  <div key={cfg.name} className="flex items-center justify-between p-2 rounded-md border border-border/60 bg-secondary/20 hover:bg-secondary/40 transition-colors">
                     <div className="flex flex-col">
                       <span className="font-semibold text-xs text-foreground truncate max-w-[120px]">{cfg.name}</span>
                       <span className="text-[9px] text-muted-foreground">{cfg.date}</span>
