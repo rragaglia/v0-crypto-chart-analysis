@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Calculator, Copy, Check, Info, BookmarkPlus, Trash2, ArrowDownUp, TriangleRight } from "lucide-react";
+import { Calculator, Copy, Check, Info, BookmarkPlus, Trash2, ArrowDownUp } from "lucide-react";
 
 interface Order {
   orderNum: number;
@@ -69,7 +69,6 @@ const parseNum = (val: string, fallback: number = 0) => {
 };
 
 export function ScaleOrdersCalculator({ coins }: { coins?: any[] }) {
-  // Manejo de estado 100% como Strings para permitir "vacío", "comas" y evitar ceros a la izquierda
   const [totalCollateralStr, setTotalCollateralStr] = useState("1000");
   const [totalOrdersStr, setTotalOrdersStr] = useState("100");
   const [strategySizeSkewStr, setStrategySizeSkewStr] = useState("2.0");
@@ -94,10 +93,22 @@ export function ScaleOrdersCalculator({ coins }: { coins?: any[] }) {
     }
   }, []);
 
-  // Cálculo principal convirtiendo strings a números en tiempo real
+  // Manejar el límite estricto de 100 órdenes en el input
+  const handleOrdersChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (parseInt(val) > 100) {
+      setTotalOrdersStr("100");
+    } else {
+      setTotalOrdersStr(val);
+    }
+  };
+
   const { segments, allOrders, maxPnL, priceSpan } = useMemo(() => {
     const totalCollateral = parseNum(totalCollateralStr);
-    const totalOrders = Math.floor(parseNum(totalOrdersStr));
+    // Aseguramos matemáticamente que las órdenes estén entre 1 y 100
+    const rawOrders = Math.floor(parseNum(totalOrdersStr));
+    const totalOrders = Math.min(Math.max(rawOrders, 1), 100); 
+    
     const strategySizeSkew = parseNum(strategySizeSkewStr, 1);
     const startPrice = parseNum(startPriceStr);
     const endPrice = parseNum(endPriceStr);
@@ -207,7 +218,6 @@ export function ScaleOrdersCalculator({ coins }: { coins?: any[] }) {
       orderIndex += segmentOrderCount;
     }
 
-    // Cálculos Finales para el gráfico
     const priceSpan = ((endPrice - startPrice) / startPrice) * 100;
     
     let totalTokens = 0;
@@ -260,7 +270,7 @@ Tipo: ${orderType.toUpperCase()}`;
       timestamp: Date.now(),
       parameters: {
         totalCollateral: parseNum(totalCollateralStr),
-        totalOrders: parseNum(totalOrdersStr),
+        totalOrders: Math.min(parseNum(totalOrdersStr), 100),
         strategySizeSkew: parseNum(strategySizeSkewStr),
         startPrice: parseNum(startPriceStr),
         endPrice: parseNum(endPriceStr),
@@ -311,8 +321,10 @@ Tipo: ${orderType.toUpperCase()}`;
               <Input id="totalCollateral" type="text" inputMode="decimal" className="h-8 text-xs font-mono" value={totalCollateralStr} onChange={(e) => setTotalCollateralStr(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="totalOrders" className="text-[10px] uppercase font-bold text-muted-foreground">Órdenes</Label>
-              <Input id="totalOrders" type="text" inputMode="numeric" className="h-8 text-xs font-mono" value={totalOrdersStr} onChange={(e) => setTotalOrdersStr(e.target.value)} />
+              <Label htmlFor="totalOrders" className="text-[10px] uppercase font-bold text-muted-foreground flex items-center justify-between">
+                Órdenes <span className="text-[9px] opacity-60 font-normal">(Max 100)</span>
+              </Label>
+              <Input id="totalOrders" type="text" inputMode="numeric" className="h-8 text-xs font-mono" value={totalOrdersStr} onChange={handleOrdersChange} />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="strategySizeSkew" className="text-[10px] uppercase font-bold text-muted-foreground">Size Skew</Label>
@@ -352,7 +364,7 @@ Tipo: ${orderType.toUpperCase()}`;
 
       {/* PIRÁMIDE DE RIESGO Y COLATERAL */}
       {allOrders.length > 0 && (
-        <Card className="bg-card">
+        <Card className="bg-card overflow-hidden">
           <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
               <ArrowDownUp className="size-4 text-primary" />
@@ -363,7 +375,7 @@ Tipo: ${orderType.toUpperCase()}`;
             </Badge>
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <div className="flex gap-4 items-stretch h-[220px] bg-secondary/20 p-4 rounded-lg border border-border/50">
+            <div className="flex gap-4 items-stretch h-[280px] bg-secondary/20 p-4 rounded-lg border border-border/50">
               
               {/* Etiquetas de Precios Izquierda */}
               <div className="flex flex-col justify-between items-end font-mono text-[11px] text-muted-foreground h-full py-1 pr-2 border-r border-border/50">
@@ -374,17 +386,19 @@ Tipo: ${orderType.toUpperCase()}`;
                 <span>${parseNum(endPriceStr).toPrecision(5)}</span>
               </div>
 
-              {/* Contenedor del Gráfico de Barras */}
-              <div className="flex-1 flex flex-col justify-between py-1 h-full gap-[1px]">
+              {/* Contenedor Flex Dinámico para el Gráfico */}
+              <div className="flex-1 flex flex-col justify-between h-full">
                 {allOrders.map((order, i) => {
                   const widthPct = (order.collateral / maxOrderCollateral) * 100;
-                  // Si el precio actual ya pasó por acá, lo marcamos diferente
                   const isExecuted = order.status === "Ejecutable";
+                  // Si hay muchas órdenes, quitamos el margin inferior para que Flexbox las comprima sin overflow
+                  const spacing = allOrders.length > 50 ? '0' : '1px';
                   
                   return (
                     <div 
                       key={`bar-${i}`} 
-                      className="w-full flex items-center group relative h-full min-h-[2px]"
+                      className="w-full flex items-center group relative flex-1"
+                      style={{ marginBottom: spacing }}
                     >
                       <div 
                         className={`h-full rounded-r-sm transition-all duration-300 ${isExecuted ? "bg-primary" : "bg-primary/30 group-hover:bg-primary/60"}`}
