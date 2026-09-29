@@ -114,14 +114,13 @@ export const COIN_MANIFEST: CoinMeta[] = [
   { id: "stacks", symbol: "STX", name: "Stacks", hyperliquidSymbol: "STX", binanceSymbol: "STX", image: "https://assets.coingecko.com/coins/images/2069/small/Stacks_logo_full.png" },
   { id: "zcash", symbol: "ZEC", name: "Zcash", hyperliquidSymbol: "ZEC", binanceSymbol: "ZEC", image: "https://assets.coingecko.com/coins/images/486/small/circle-zcash-color.png" },
   { id: "dash", symbol: "DASH", name: "Dash", hyperliquidSymbol: "DASH", binanceSymbol: "DASH", image: "https://assets.coingecko.com/coins/images/19/small/dash-logo.png" },
-  {
-    id: "nexo",
-    symbol: "NEXO",
-    name: "Nexo",
-    hyperliquidSymbol: "NEXO",
-    binanceSymbol: "NEXO",
-    image: "https://assets.coingecko.com/coins/images/3695/small/nexo.png"
-  },
+  { id: "nexo", symbol: "NEXO", name: "Nexo", hyperliquidSymbol: "NEXO",binanceSymbol: "NEXO", image: "https://assets.coingecko.com/coins/images/3695/small/nexo.png" },
+  { id: "purr", symbol: "PURR", name: "Purr", hyperliquidSymbol: "PURR", binanceSymbol: "PURR" , image: "https://assets.coingecko.com/coins/images/37125/standard/PURR_CG.png"},
+  { id: "pump", symbol: "PUMP", name: "Pump", hyperliquidSymbol: "PUMP", binanceSymbol: "PUMP", image: "https://assets.coingecko.com/coins/images/67164/standard/pump.jpg" },
+  { id: "kinetix-network", symbol: "KNTQ", name: "Kinetix", hyperliquidSymbol: "KNTQ", binanceSymbol: "KNTQ" , image: "https://assets.coingecko.com/coins/images/70252/standard/kntq.png"},
+  { id: "drv", symbol: "DRV", name: "DRV", hyperliquidSymbol: "DRV", binanceSymbol: "DRV", image: "https://assets.coingecko.com/coins/images/52889/standard/Token_Logo.png" },
+  { id: "tread", symbol: "TREAD", name: "Tread", hyperliquidSymbol: "TREAD", binanceSymbol: "TREAD" , image: "https://assets.coingecko.com/coins/images/102174405/standard/TREAD_token_mark_500x500_black.png"},
+  { id: "spcxd", symbol: "SPCXD", name: "SPCXD", hyperliquidSymbol: "SPCXD", binanceSymbol: "SPCXD" , image: "https://assets.coingecko.com/rwas/images/240/standard/spacex.jpg"},
 ];
 
 /** Look up a coin by its CoinGecko ID */
