@@ -18,7 +18,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CoinSelector } from "@/components/coin-selector";
-import { Loader2, ArrowRightLeft, X, Plus, Info, TrendingUp, TrendingDown, BarChart3, RefreshCw } from "lucide-react";
+import { Loader2, ArrowRightLeft, X, Plus, Info, TrendingUp, TrendingDown, BarChart3, RefreshCw, ZoomIn } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const batchFetcher = async (url: string) => {
@@ -90,7 +90,15 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return null;
   });
 
-  // Estado persistente para ocultar/mostrar las líneas de media y mediana
+  // Nuevo estado persistente para la fecha de Zoom/Recorte
+  const [zoomDate, setZoomDate] = useState<number | null>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("crypto-rs-zoomDate");
+      if (saved) return JSON.parse(saved);
+    }
+    return null;
+  });
+
   const [hiddenLines, setHiddenLines] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("crypto-rs-hiddenLines");
@@ -106,6 +114,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
   useEffect(() => { localStorage.setItem("crypto-rs-quoteCoin", quoteCoin); }, [quoteCoin]);
   useEffect(() => { localStorage.setItem("crypto-rs-timeframe", timeframe); }, [timeframe]);
   useEffect(() => { localStorage.setItem("crypto-rs-rebaseDate", JSON.stringify(rebaseDate)); }, [rebaseDate]);
+  useEffect(() => { localStorage.setItem("crypto-rs-zoomDate", JSON.stringify(zoomDate)); }, [zoomDate]);
   useEffect(() => { localStorage.setItem("crypto-rs-hiddenLines", JSON.stringify(hiddenLines)); }, [hiddenLines]);
 
   const handleSwap = () => {
@@ -114,12 +123,14 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       setBaseCoins([quoteCoin]);
       setQuoteCoin(oldBase);
       setRebaseDate(null);
+      setZoomDate(null);
     }
   };
 
   const handleTimeframeChange = (val: string) => {
     setTimeframe(val);
     setRebaseDate(null);
+    setZoomDate(null);
   };
 
   const addBaseCoin = (id: string) => {
@@ -185,6 +196,8 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
     for (const [ts] of timelinePrices) {
       if (ts < cutoff) continue;
+      // Filtro clave para el Zoom: ignorar puntos anteriores a la fecha seleccionada
+      if (zoomDate && ts < zoomDate) continue;
       
       const priceQ = getClosestPrice(quoteCoin, ts);
       if (priceQ === null) continue;
@@ -287,10 +300,18 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     }
 
     return { chartData: finalMerged, segmentData: segData, segmentTypeLabel, segmentMetrics: metrics };
-  }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate, allCoinsToFetch]);
+  }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate, zoomDate, allCoinsToFetch]);
 
   const quoteData = extendedCoins?.find((c) => c.id === quoteCoin);
   const finalDataPoint = chartData.length > 0 ? chartData[chartData.length - 1] : null;
+
+  const formatDateLabel = (ts: number) => {
+    return new Date(ts).toLocaleDateString("es-ES", { 
+      day: "2-digit", month: "short", 
+      hour: timeframe === "4h" || timeframe === "1d" ? "2-digit" : undefined, 
+      minute: timeframe === "4h" || timeframe === "1d" ? "2-digit" : undefined 
+    });
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -373,22 +394,47 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
             <CardTitle className="text-lg font-semibold flex flex-wrap items-center gap-2">
               Rendimiento Relativo vs {quoteData?.name}
               
+              {zoomDate && (
+                <Badge 
+                  variant="outline" 
+                  className="bg-primary/20 text-primary hover:bg-danger/10 hover:text-danger hover:border-danger/30 transition-colors cursor-pointer ml-2" 
+                  onClick={() => setZoomDate(null)} 
+                  title="Quitar ampliación temporal"
+                >
+                  <ZoomIn className="size-3 mr-1.5" />
+                  Zoom desde: {formatDateLabel(zoomDate)}
+                  <X className="size-3 ml-1.5" />
+                </Badge>
+              )}
+
               {rebaseDate && (
                 <Badge 
                   variant="outline" 
-                  className="bg-primary/10 text-primary hover:bg-danger/10 hover:text-danger hover:border-danger/30 transition-colors cursor-pointer ml-2" 
+                  className="bg-secondary text-secondary-foreground hover:bg-danger/10 hover:text-danger hover:border-danger/30 transition-colors cursor-pointer ml-1" 
                   onClick={() => setRebaseDate(null)} 
                   title="Restaurar a inicio de periodo"
                 >
-                  Desde: {new Date(rebaseDate).toLocaleDateString("es-ES", { day: "2-digit", month: "short", hour: timeframe === "4h" || timeframe === "1d" ? "2-digit" : undefined, minute: timeframe === "4h" || timeframe === "1d" ? "2-digit" : undefined })}
+                  Punto 0%: {formatDateLabel(rebaseDate)}
                   <X className="size-3 ml-1.5" />
                 </Badge>
+              )}
+
+              {rebaseDate && rebaseDate !== zoomDate && (
+                <button
+                  onClick={() => {
+                    setZoomDate(rebaseDate);
+                    setRebaseDate(null);
+                  }}
+                  className="text-xs flex items-center gap-1.5 text-primary hover:text-primary/80 transition-colors ml-1 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 shadow-sm"
+                >
+                  <ZoomIn className="size-3" /> Ampliar vista desde aquí
+                </button>
               )}
             </CardTitle>
             
             <div className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Info className="size-3.5" />
-              Haz clic en el gráfico para reestablecer el punto 0%
+              Haz clic en el gráfico para fijar punto 0% o ampliar
             </div>
           </div>
         </CardHeader>
