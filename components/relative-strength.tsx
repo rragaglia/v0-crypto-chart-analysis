@@ -18,7 +18,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CoinSelector } from "@/components/coin-selector";
-import { Loader2, ArrowRightLeft, X, Plus, Info, TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
+import { Loader2, ArrowRightLeft, X, Plus, Info, TrendingUp, TrendingDown, BarChart3, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const batchFetcher = async (url: string) => {
@@ -90,13 +90,13 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return null;
   });
 
-  // Estado persistente para ocultar/mostrar las líneas de media y mediana (por defecto todas ocultas para no saturar, o podes dejarlas vacías para que se muestren)
+  // Estado persistente para ocultar/mostrar las líneas de media y mediana
   const [hiddenLines, setHiddenLines] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("crypto-rs-hiddenLines");
       if (saved) return JSON.parse(saved);
     }
-    return []; // Todas visibles por defecto
+    return []; 
   });
 
   const [addValue, setAddValue] = useState("");
@@ -147,7 +147,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     .filter(id => id !== "usd")
     .join(",");
 
-  const { data, isLoading } = useSWR(
+  const { data, isLoading, mutate, isValidating } = useSWR(
     allCoinsToFetch.length > 0 ? `/api/crypto/batch?coinIds=${allCoinsToFetch}&days=${tfConfig.days}` : null,
     batchFetcher,
     { revalidateOnFocus: false, dedupingInterval: 300000 }
@@ -349,12 +349,21 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
         <div className="flex flex-col gap-2 min-w-[140px]">
           <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Temporalidad</span>
-          <Select value={timeframe} onValueChange={handleTimeframeChange}>
-            <SelectTrigger className="w-full bg-background border-border h-10"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {TIMEFRAMES.map((tf) => <SelectItem key={tf.value} value={tf.value}>{tf.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select value={timeframe} onValueChange={handleTimeframeChange}>
+              <SelectTrigger className="w-full bg-background border-border h-10"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TIMEFRAMES.map((tf) => <SelectItem key={tf.value} value={tf.value}>{tf.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <button
+              onClick={() => mutate()}
+              className="inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              title="Actualizar datos"
+            >
+              <RefreshCw className={`size-4 ${isValidating || isLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -384,7 +393,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && chartData.length === 0 ? (
             <div className="h-[400px] flex items-center justify-center text-muted-foreground gap-2">
               <Loader2 className="size-6 animate-spin" /> Calculando rendimiento...
             </div>
