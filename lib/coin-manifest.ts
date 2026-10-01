@@ -121,7 +121,7 @@ export const COIN_MANIFEST: CoinMeta[] = [
   { id: "drv", symbol: "DRV", name: "DRV", hyperliquidSymbol: "DRV", binanceSymbol: "DRV", image: "https://assets.coingecko.com/coins/images/52889/standard/Token_Logo.png" },
   { id: "tread", symbol: "TREAD", name: "Tread", hyperliquidSymbol: "TREAD", binanceSymbol: "TREAD" , image: "https://assets.coingecko.com/coins/images/102174405/standard/TREAD_token_mark_500x500_black.png"},
   { id: "spcxd", symbol: "SPCXD", name: "SPCXD", hyperliquidSymbol: "SPCXD", binanceSymbol: "SPCXD" , image: "https://assets.coingecko.com/rwas/images/240/standard/spacex.jpg"},
-  { id: "xpl", symbol: "XPL", name: "Plasma", hyperliquidSymbol: "XPL", binanceSymbol: "XPL" , image: "https://assets.coingecko.com/coins/images/66489/standard/Plasma-symbol-green-1.png"},
+  { id: "plasma", symbol: "XPL", name: "Plasma", hyperliquidSymbol: "XPL", binanceSymbol: "XPL" , image: "https://assets.coingecko.com/coins/images/66489/standard/Plasma-symbol-green-1.png"},
 
 ];
 
