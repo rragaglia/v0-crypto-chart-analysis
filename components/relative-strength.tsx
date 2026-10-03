@@ -73,6 +73,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return [usdCoin, ...coins];
   }, [coins]);
 
+  // Persistencia de estados mediante localStorage
   const [baseCoins, setBaseCoins] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("crypto-rs-baseCoins");
@@ -121,6 +122,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
   const [addValue, setAddValue] = useState("");
 
+  // Guardar estados automáticamente
   useEffect(() => { localStorage.setItem("crypto-rs-baseCoins", JSON.stringify(baseCoins)); }, [baseCoins]);
   useEffect(() => { localStorage.setItem("crypto-rs-quoteCoin", quoteCoin); }, [quoteCoin]);
   useEffect(() => { localStorage.setItem("crypto-rs-timeframe", timeframe); }, [timeframe]);
@@ -312,52 +314,66 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return { chartData: finalMerged, segmentData: segData, segmentTypeLabel, segmentMetrics: metrics };
   }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate, zoomDate, allCoinsToFetch]);
 
-  // Cálculos dinámicos para la tabla de rendimientos (15m, 1h, 1d, etc.)
+  // Cálculos dinámicos para la tabla de rendimientos corrigiendo el problema de resolución
   const tableData = useMemo(() => {
     if (!data?.results) return [];
     
-    const now = Date.now();
+    // Buscar el timestamp MÁS RECIENTE disponible en los datos reales
+    let currentTs = 0;
+    baseCoins.forEach(bc => {
+      const prices = data.results[bc]?.prices;
+      if (prices && prices.length > 0) {
+        const lastTs = prices[prices.length - 1][0];
+        if (lastTs > currentTs) currentTs = lastTs;
+      }
+    });
 
-    const getClosestPrice = (coinId: string, targetTs: number, tolerance: number) => {
-      if (coinId === "usd") return 1;
+    if (currentTs === 0) return [];
+
+    const getClosestPriceInfo = (coinId: string, targetTs: number, maxTolerance: number) => {
+      if (coinId === "usd") return { price: 1, ts: targetTs };
       const prices = data.results[coinId]?.prices;
       if (!prices || prices.length === 0) return null;
       
       let minDiff = Infinity;
-      let closestPrice = null;
+      let closestPoint = null;
       for (let i = 0; i < prices.length; i++) {
         const diff = Math.abs(prices[i][0] - targetTs);
         if (diff < minDiff) {
           minDiff = diff;
-          closestPrice = prices[i][1];
+          closestPoint = { price: prices[i][1], ts: prices[i][0] };
         }
       }
-      return minDiff <= tolerance ? closestPrice : null;
+      return minDiff <= maxTolerance ? closestPoint : null;
     };
 
     return baseCoins.map(bc => {
-      // Usamos una tolerancia de 2 hs para buscar el "precio actual" por si la API viene con delay
-      const currentQ = getClosestPrice(quoteCoin, now, 2 * 3600 * 1000); 
-      const currentB = getClosestPrice(bc, now, 2 * 3600 * 1000);
-      const currentRatio = (currentB !== null && currentQ !== null) ? currentB / currentQ : null;
+      // Precio actual con tolerancia alta para asegurar que tome el último disponible
+      const currentQ = getClosestPriceInfo(quoteCoin, currentTs, 2 * 24 * 3600 * 1000); 
+      const currentB = getClosestPriceInfo(bc, currentTs, 2 * 24 * 3600 * 1000);
+      const currentRatio = (currentB !== null && currentQ !== null) ? currentB.price / currentQ.price : null;
       
       const currentUsdPrice = data.results[bc]?.prices?.slice(-1)[0]?.[1] || 0;
       
       const row: any = { coin: bc, priceUsd: currentUsdPrice };
       
       TIMEFRAMES_TABLE.forEach(tf => {
-        // Tolerancias dinámicas según la columna a calcular
-        let tolerance = 24 * 3600 * 1000; 
-        if (tf.ms <= 60 * 60 * 1000) tolerance = 30 * 60 * 1000; 
-        else if (tf.ms <= 24 * 3600 * 1000) tolerance = 4 * 3600 * 1000; 
+        // Tolerancia adaptativa: Mínimo 2hs para Timeframes grandes con datos horarios, Máximo 3 días para TF de años
+        let tolerance = Math.max(2 * 3600 * 1000, tf.ms * 0.2); 
+        if (tolerance > 3 * 24 * 3600 * 1000) tolerance = 3 * 24 * 3600 * 1000;
 
-        const targetTs = now - tf.ms;
-        const pastQ = getClosestPrice(quoteCoin, targetTs, tolerance);
-        const pastB = getClosestPrice(bc, targetTs, tolerance);
+        const targetTs = currentTs - tf.ms;
+        const pastQ = getClosestPriceInfo(quoteCoin, targetTs, tolerance);
+        const pastB = getClosestPriceInfo(bc, targetTs, tolerance);
         
         if (currentRatio !== null && pastQ !== null && pastB !== null) {
-          const pastRatio = pastB / pastQ;
-          row[tf.key] = ((currentRatio - pastRatio) / pastRatio) * 100;
+          // Filtrar falso 0.00% cuando la API no tiene suficiente resolución temporal (es decir, agarra la misma vela de datos)
+          if (currentB && pastB.ts === currentB.ts) {
+            row[tf.key] = null;
+          } else {
+            const pastRatio = pastB.price / pastQ.price;
+            row[tf.key] = ((currentRatio - pastRatio) / pastRatio) * 100;
+          }
         } else {
           row[tf.key] = null;
         }
@@ -583,7 +599,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                 </ResponsiveContainer>
               </div>
 
-              {/* NUEVA TABLA DE RENDIMIENTOS (REEMPLAZA A LOS PILLS) */}
+              {/* TABLA DE RENDIMIENTOS (REEMPLAZA A LOS PILLS) */}
               {tableData.length > 0 && (
                 <div className="mt-6 pt-4 border-t border-border/50 overflow-x-auto">
                   <Table>
