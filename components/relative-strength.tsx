@@ -314,11 +314,10 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return { chartData: finalMerged, segmentData: segData, segmentTypeLabel, segmentMetrics: metrics };
   }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate, zoomDate, allCoinsToFetch]);
 
-  // Cálculos dinámicos para la tabla de rendimientos corrigiendo el problema de resolución
+  // Cálculos dinámicos para la tabla de rendimientos
   const tableData = useMemo(() => {
     if (!data?.results) return [];
     
-    // Buscar el timestamp MÁS RECIENTE disponible en los datos reales
     let currentTs = 0;
     baseCoins.forEach(bc => {
       const prices = data.results[bc]?.prices;
@@ -348,7 +347,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     };
 
     return baseCoins.map(bc => {
-      // Precio actual con tolerancia alta para asegurar que tome el último disponible
       const currentQ = getClosestPriceInfo(quoteCoin, currentTs, 2 * 24 * 3600 * 1000); 
       const currentB = getClosestPriceInfo(bc, currentTs, 2 * 24 * 3600 * 1000);
       const currentRatio = (currentB !== null && currentQ !== null) ? currentB.price / currentQ.price : null;
@@ -358,7 +356,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       const row: any = { coin: bc, priceUsd: currentUsdPrice };
       
       TIMEFRAMES_TABLE.forEach(tf => {
-        // Tolerancia adaptativa: Mínimo 2hs para Timeframes grandes con datos horarios, Máximo 3 días para TF de años
         let tolerance = Math.max(2 * 3600 * 1000, tf.ms * 0.2); 
         if (tolerance > 3 * 24 * 3600 * 1000) tolerance = 3 * 24 * 3600 * 1000;
 
@@ -367,7 +364,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
         const pastB = getClosestPriceInfo(bc, targetTs, tolerance);
         
         if (currentRatio !== null && pastQ !== null && pastB !== null) {
-          // Filtrar falso 0.00% cuando la API no tiene suficiente resolución temporal (es decir, agarra la misma vela de datos)
           if (currentB && pastB.ts === currentB.ts) {
             row[tf.key] = null;
           } else {
@@ -384,6 +380,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
   }, [data, baseCoins, quoteCoin]);
 
   const quoteData = extendedCoins?.find((c) => c.id === quoteCoin);
+  const finalDataPoint = chartData.length > 0 ? chartData[chartData.length - 1] : null;
 
   const formatDateLabel = (ts: number) => {
     return new Date(ts).toLocaleDateString("es-ES", { 
@@ -599,7 +596,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                 </ResponsiveContainer>
               </div>
 
-              {/* TABLA DE RENDIMIENTOS (REEMPLAZA A LOS PILLS) */}
+              {/* TABLA DE RENDIMIENTOS Y ACUMULADO */}
               {tableData.length > 0 && (
                 <div className="mt-6 pt-4 border-t border-border/50 overflow-x-auto">
                   <Table>
@@ -610,11 +607,18 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                         {TIMEFRAMES_TABLE.map(tf => (
                           <TableHead key={tf.key} className="text-right text-xs h-8 text-muted-foreground">{tf.label}</TableHead>
                         ))}
+                        <TableHead className="text-right text-xs h-8 border-l-2 border-border/60 text-foreground font-bold bg-secondary/10">
+                          Acumulado
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {tableData.map((row, i) => {
                         const c = extendedCoins.find((x: any) => x.id === row.coin);
+                        
+                        // Obtenemos el valor acumulado exacto del final del gráfico (respeta zoom y rebase)
+                        const accumulatedVal = finalDataPoint ? finalDataPoint[row.coin] : null;
+
                         return (
                           <TableRow key={row.coin} className="border-border/30 hover:bg-secondary/10">
                             <TableCell className="py-2">
@@ -638,6 +642,19 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                                 </TableCell>
                               );
                             })}
+                            
+                            {/* COLUMNA DE ACUMULADO */}
+                            {(() => {
+                              if (accumulatedVal === null || accumulatedVal === undefined) {
+                                return <TableCell className="py-2 text-right text-xs text-muted-foreground opacity-50 border-l-2 border-border/60 bg-secondary/5">-</TableCell>;
+                              }
+                              const isAccPos = accumulatedVal >= 0;
+                              return (
+                                <TableCell className={`py-2 text-right font-mono text-xs font-bold border-l-2 border-border/60 bg-secondary/5 ${isAccPos ? 'text-success' : 'text-danger'}`}>
+                                  {isAccPos ? "+" : ""}{accumulatedVal.toFixed(2)}%
+                                </TableCell>
+                              );
+                            })()}
                           </TableRow>
                         );
                       })}
