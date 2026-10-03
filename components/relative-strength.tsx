@@ -18,7 +18,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CoinSelector } from "@/components/coin-selector";
-import { Loader2, ArrowRightLeft, X, Plus, Info, TrendingUp, TrendingDown, BarChart3, RefreshCw, ZoomIn } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Loader2, ArrowRightLeft, X, Plus, Info, BarChart3, RefreshCw, ZoomIn } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const batchFetcher = async (url: string) => {
@@ -36,6 +37,19 @@ const TIMEFRAMES = [
   { value: "365d", label: "1 Año", days: "365" },
   { value: "730d", label: "2 Años", days: "730" },
   { value: "1095d", label: "3 Años", days: "1095" },
+];
+
+const TIMEFRAMES_TABLE = [
+  { key: "15m", ms: 15 * 60 * 1000, label: "15m%" },
+  { key: "1h", ms: 60 * 60 * 1000, label: "1h%" },
+  { key: "4h", ms: 4 * 60 * 60 * 1000, label: "4hs%" },
+  { key: "12h", ms: 12 * 60 * 60 * 1000, label: "12hs%" },
+  { key: "1d", ms: 24 * 60 * 60 * 1000, label: "1d%" },
+  { key: "7d", ms: 7 * 24 * 60 * 60 * 1000, label: "7d%" },
+  { key: "15d", ms: 15 * 24 * 60 * 60 * 1000, label: "15d%" },
+  { key: "1m", ms: 30 * 24 * 60 * 60 * 1000, label: "1m%" },
+  { key: "6m", ms: 180 * 24 * 60 * 60 * 1000, label: "6m%" },
+  { key: "1y", ms: 365 * 24 * 60 * 60 * 1000, label: "1y%" },
 ];
 
 const COLORS = ["#a3e635", "#3b82f6", "#f59e0b", "#ec4899", "#8b5cf6"];
@@ -59,7 +73,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return [usdCoin, ...coins];
   }, [coins]);
 
-  // Persistencia de estados mediante localStorage
   const [baseCoins, setBaseCoins] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("crypto-rs-baseCoins");
@@ -90,7 +103,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return null;
   });
 
-  // Nuevo estado persistente para la fecha de Zoom/Recorte
   const [zoomDate, setZoomDate] = useState<number | null>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("crypto-rs-zoomDate");
@@ -109,7 +121,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
   const [addValue, setAddValue] = useState("");
 
-  // Guardar estados automáticamente
   useEffect(() => { localStorage.setItem("crypto-rs-baseCoins", JSON.stringify(baseCoins)); }, [baseCoins]);
   useEffect(() => { localStorage.setItem("crypto-rs-quoteCoin", quoteCoin); }, [quoteCoin]);
   useEffect(() => { localStorage.setItem("crypto-rs-timeframe", timeframe); }, [timeframe]);
@@ -196,7 +207,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
     for (const [ts] of timelinePrices) {
       if (ts < cutoff) continue;
-      // Filtro clave para el Zoom: ignorar puntos anteriores a la fecha seleccionada
       if (zoomDate && ts < zoomDate) continue;
       
       const priceQ = getClosestPrice(quoteCoin, ts);
@@ -302,8 +312,62 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return { chartData: finalMerged, segmentData: segData, segmentTypeLabel, segmentMetrics: metrics };
   }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate, zoomDate, allCoinsToFetch]);
 
+  // Cálculos dinámicos para la tabla de rendimientos (15m, 1h, 1d, etc.)
+  const tableData = useMemo(() => {
+    if (!data?.results) return [];
+    
+    const now = Date.now();
+
+    const getClosestPrice = (coinId: string, targetTs: number, tolerance: number) => {
+      if (coinId === "usd") return 1;
+      const prices = data.results[coinId]?.prices;
+      if (!prices || prices.length === 0) return null;
+      
+      let minDiff = Infinity;
+      let closestPrice = null;
+      for (let i = 0; i < prices.length; i++) {
+        const diff = Math.abs(prices[i][0] - targetTs);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestPrice = prices[i][1];
+        }
+      }
+      return minDiff <= tolerance ? closestPrice : null;
+    };
+
+    return baseCoins.map(bc => {
+      // Usamos una tolerancia de 2 hs para buscar el "precio actual" por si la API viene con delay
+      const currentQ = getClosestPrice(quoteCoin, now, 2 * 3600 * 1000); 
+      const currentB = getClosestPrice(bc, now, 2 * 3600 * 1000);
+      const currentRatio = (currentB !== null && currentQ !== null) ? currentB / currentQ : null;
+      
+      const currentUsdPrice = data.results[bc]?.prices?.slice(-1)[0]?.[1] || 0;
+      
+      const row: any = { coin: bc, priceUsd: currentUsdPrice };
+      
+      TIMEFRAMES_TABLE.forEach(tf => {
+        // Tolerancias dinámicas según la columna a calcular
+        let tolerance = 24 * 3600 * 1000; 
+        if (tf.ms <= 60 * 60 * 1000) tolerance = 30 * 60 * 1000; 
+        else if (tf.ms <= 24 * 3600 * 1000) tolerance = 4 * 3600 * 1000; 
+
+        const targetTs = now - tf.ms;
+        const pastQ = getClosestPrice(quoteCoin, targetTs, tolerance);
+        const pastB = getClosestPrice(bc, targetTs, tolerance);
+        
+        if (currentRatio !== null && pastQ !== null && pastB !== null) {
+          const pastRatio = pastB / pastQ;
+          row[tf.key] = ((currentRatio - pastRatio) / pastRatio) * 100;
+        } else {
+          row[tf.key] = null;
+        }
+      });
+      
+      return row;
+    });
+  }, [data, baseCoins, quoteCoin]);
+
   const quoteData = extendedCoins?.find((c) => c.id === quoteCoin);
-  const finalDataPoint = chartData.length > 0 ? chartData[chartData.length - 1] : null;
 
   const formatDateLabel = (ts: number) => {
     return new Date(ts).toLocaleDateString("es-ES", { 
@@ -519,35 +583,50 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                 </ResponsiveContainer>
               </div>
 
-              {/* RESUMEN FINAL DE RENDIMIENTO CON PRECIO USD */}
-              {finalDataPoint && (
-                <div className="flex flex-wrap items-center justify-center gap-3 mt-6 pt-4 border-t border-border/50">
-                  <span className="text-sm font-semibold text-muted-foreground mr-2">Acumulado & Precio actual:</span>
-                  {baseCoins.map((bc, i) => {
-                    const value = finalDataPoint[bc];
-                    if (value === undefined) return null;
-                    const isPositive = value >= 0;
-                    const c = extendedCoins.find((x: any) => x.id === bc);
-                    const currentUsdPrice = finalDataPoint.pricesUSD?.[bc];
-
-                    return (
-                      <div key={`summary-${bc}`} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary/30 border border-border/50 shadow-sm">
-                        <div className="size-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="font-medium text-sm text-foreground">{c?.symbol.toUpperCase()}</span>
-                          {currentUsdPrice && (
-                            <span className="text-xs text-muted-foreground font-mono">
-                              {formatUsd(currentUsdPrice)}
-                            </span>
-                          )}
-                        </div>
-                        <div className={`flex items-center gap-1 font-bold text-sm ml-1 border-l border-border/50 pl-2 ${isPositive ? 'text-success' : 'text-danger'}`}>
-                          {isPositive ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
-                          {isPositive ? "+" : ""}{value.toFixed(2)}%
-                        </div>
-                      </div>
-                    );
-                  })}
+              {/* NUEVA TABLA DE RENDIMIENTOS (REEMPLAZA A LOS PILLS) */}
+              {tableData.length > 0 && (
+                <div className="mt-6 pt-4 border-t border-border/50 overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-border/50 hover:bg-transparent">
+                        <TableHead className="text-xs h-8">Token</TableHead>
+                        <TableHead className="text-right text-xs h-8">Precio</TableHead>
+                        {TIMEFRAMES_TABLE.map(tf => (
+                          <TableHead key={tf.key} className="text-right text-xs h-8 text-muted-foreground">{tf.label}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tableData.map((row, i) => {
+                        const c = extendedCoins.find((x: any) => x.id === row.coin);
+                        return (
+                          <TableRow key={row.coin} className="border-border/30 hover:bg-secondary/10">
+                            <TableCell className="py-2">
+                              <div className="flex items-center gap-2">
+                                <div className="size-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
+                                <span className="font-bold text-xs">{c?.symbol.toUpperCase()}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-2 text-right font-mono text-xs text-muted-foreground">
+                              {formatUsd(row.priceUsd)}
+                            </TableCell>
+                            {TIMEFRAMES_TABLE.map(tf => {
+                              const val = row[tf.key];
+                              if (val === null || val === undefined) {
+                                return <TableCell key={tf.key} className="py-2 text-right text-xs text-muted-foreground opacity-50">-</TableCell>;
+                              }
+                              const isPos = val >= 0;
+                              return (
+                                <TableCell key={tf.key} className={`py-2 text-right font-mono text-xs font-bold ${isPos ? 'text-success' : 'text-danger'}`}>
+                                  {isPos ? "+" : ""}{val.toFixed(2)}%
+                                </TableCell>
+                              );
+                            })}
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
 
