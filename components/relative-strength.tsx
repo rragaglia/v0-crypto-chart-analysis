@@ -73,7 +73,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return [usdCoin, ...coins];
   }, [coins]);
 
-  // Persistencia de estados mediante localStorage
   const [baseCoins, setBaseCoins] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("crypto-rs-baseCoins");
@@ -122,7 +121,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
   const [addValue, setAddValue] = useState("");
 
-  // Guardar estados automáticamente
   useEffect(() => { localStorage.setItem("crypto-rs-baseCoins", JSON.stringify(baseCoins)); }, [baseCoins]);
   useEffect(() => { localStorage.setItem("crypto-rs-quoteCoin", quoteCoin); }, [quoteCoin]);
   useEffect(() => { localStorage.setItem("crypto-rs-timeframe", timeframe); }, [timeframe]);
@@ -379,6 +377,22 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     });
   }, [data, baseCoins, quoteCoin]);
 
+  // Cálculo del tiempo transcurrido para la columna "Acumulado"
+  const accumulatedTimeInfo = useMemo(() => {
+    if (chartData.length === 0) return null;
+    const startTs = rebaseDate || chartData[0].timestamp;
+    const endTs = chartData[chartData.length - 1].timestamp;
+    const diffMs = Math.max(0, endTs - startTs);
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    
+    if (diffDays >= 1) {
+      return `${Math.round(diffDays)}d`;
+    } else {
+      const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+      return `${diffHours}h`;
+    }
+  }, [chartData, rebaseDate]);
+
   const quoteData = extendedCoins?.find((c) => c.id === quoteCoin);
   const finalDataPoint = chartData.length > 0 ? chartData[chartData.length - 1] : null;
 
@@ -607,8 +621,8 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                         {TIMEFRAMES_TABLE.map(tf => (
                           <TableHead key={tf.key} className="text-right text-xs h-8 text-muted-foreground">{tf.label}</TableHead>
                         ))}
-                        <TableHead className="text-right text-xs h-8 border-l-2 border-border/60 text-foreground font-bold bg-secondary/10">
-                          Acumulado
+                        <TableHead className="text-right text-xs h-8 border-l-2 border-border/60 text-foreground font-bold bg-secondary/10 whitespace-nowrap">
+                          Acumulado {accumulatedTimeInfo && <span className="text-[10px] text-muted-foreground font-normal ml-1">({accumulatedTimeInfo})</span>}
                         </TableHead>
                       </TableRow>
                     </TableHeader>
