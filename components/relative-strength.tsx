@@ -52,7 +52,17 @@ const TIMEFRAMES_TABLE = [
   { key: "1y", ms: 365 * 24 * 60 * 60 * 1000, label: "1y%" },
 ];
 
-const COLORS = ["#a3e635", "#3b82f6", "#f59e0b", "#ec4899", "#8b5cf6"];
+// Paleta ampliada a 8 colores bien distinguibles
+const COLORS = [
+  "#a3e635", // Verde lima
+  "#3b82f6", // Azul
+  "#f59e0b", // Ámbar/Naranja
+  "#ec4899", // Rosa
+  "#8b5cf6", // Violeta
+  "#14b8a6", // Turquesa
+  "#f43f5e", // Rojo rosado
+  "#0ea5e9"  // Celeste
+];
 
 const formatUsd = (price: number) => {
   if (price >= 1) return price.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -145,7 +155,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
   };
 
   const addBaseCoin = (id: string) => {
-    if (baseCoins.length < 5 && !baseCoins.includes(id)) {
+    if (baseCoins.length < 8 && !baseCoins.includes(id)) {
       setBaseCoins([...baseCoins, id]);
     }
   };
@@ -312,7 +322,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return { chartData: finalMerged, segmentData: segData, segmentTypeLabel, segmentMetrics: metrics };
   }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate, zoomDate, allCoinsToFetch]);
 
-  // Cálculos dinámicos para la tabla de rendimientos
+  // Cálculos dinámicos para la tabla de rendimientos corrigiendo la falta de resolución en cortísimo plazo
   const tableData = useMemo(() => {
     if (!data?.results) return [];
     
@@ -344,6 +354,18 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       return minDiff <= maxTolerance ? closestPoint : null;
     };
 
+    const getStrictlyOlderPrice = (coinId: string, refTs: number) => {
+      if (coinId === "usd") return { price: 1, ts: refTs - 1 };
+      const prices = data.results[coinId]?.prices;
+      if (!prices || prices.length === 0) return null;
+      for (let i = prices.length - 1; i >= 0; i--) {
+        if (prices[i][0] < refTs) {
+          return { price: prices[i][1], ts: prices[i][0] };
+        }
+      }
+      return null;
+    };
+
     return baseCoins.map(bc => {
       const currentQ = getClosestPriceInfo(quoteCoin, currentTs, 2 * 24 * 3600 * 1000); 
       const currentB = getClosestPriceInfo(bc, currentTs, 2 * 24 * 3600 * 1000);
@@ -358,10 +380,19 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
         if (tolerance > 3 * 24 * 3600 * 1000) tolerance = 3 * 24 * 3600 * 1000;
 
         const targetTs = currentTs - tf.ms;
-        const pastQ = getClosestPriceInfo(quoteCoin, targetTs, tolerance);
-        const pastB = getClosestPriceInfo(bc, targetTs, tolerance);
+        let pastQ = getClosestPriceInfo(quoteCoin, targetTs, tolerance);
+        let pastB = getClosestPriceInfo(bc, targetTs, tolerance);
         
         if (currentRatio !== null && pastQ !== null && pastB !== null) {
+          // Fallback: Si no hay resolución suficiente y el punto buscado es el mismo que el actual, buscamos la vela anterior
+          if (currentB && pastB.ts === currentB.ts) {
+            const olderB = getStrictlyOlderPrice(bc, currentB.ts);
+            if (olderB) {
+              pastB = olderB;
+              pastQ = getClosestPriceInfo(quoteCoin, pastB.ts, tolerance) || pastQ;
+            }
+          }
+
           if (currentB && pastB.ts === currentB.ts) {
             row[tf.key] = null;
           } else {
@@ -377,7 +408,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     });
   }, [data, baseCoins, quoteCoin]);
 
-  // Cálculo del tiempo transcurrido para la columna "Acumulado"
   const accumulatedTimeInfo = useMemo(() => {
     if (chartData.length === 0) return null;
     const startTs = rebaseDate || chartData[0].timestamp;
@@ -408,13 +438,13 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-4 p-4 border border-border bg-card rounded-lg shadow-sm">
         <div className="flex flex-col gap-2 flex-1 min-w-[250px]">
-          <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Activos Base (Max 5)</span>
+          <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Activos Base (Max 8)</span>
           <div className="flex flex-wrap items-center gap-2">
             {baseCoins.map((bc, i) => {
               const c = extendedCoins.find((x: any) => x.id === bc);
               return (
                 <Badge key={bc} variant="outline" className="flex items-center gap-1.5 py-1.5 px-3 bg-secondary/50 text-sm">
-                  <div className="size-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
+                  <div className="size-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                   <span className="font-medium text-foreground">{c?.symbol.toUpperCase()}</span>
                   {baseCoins.length > 1 && (
                     <button 
@@ -429,7 +459,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
               )
             })}
             
-            {baseCoins.length < 5 && (
+            {baseCoins.length < 8 && (
               <Select value={addValue} onValueChange={(id) => { addBaseCoin(id); setAddValue(""); }}>
                 <SelectTrigger className="w-fit bg-transparent border-border border-dashed h-8 text-xs px-3 shadow-none hover:bg-secondary/50 transition-colors">
                   <Plus className="size-3.5 mr-1.5" /> Añadir 
@@ -600,7 +630,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                         key={bc}
                         type="monotone" 
                         dataKey={bc} 
-                        stroke={COLORS[i]} 
+                        stroke={COLORS[i % COLORS.length]} 
                         strokeWidth={2} 
                         dot={false} 
                         activeDot={{ r: 4 }}
@@ -630,14 +660,13 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                       {tableData.map((row, i) => {
                         const c = extendedCoins.find((x: any) => x.id === row.coin);
                         
-                        // Obtenemos el valor acumulado exacto del final del gráfico (respeta zoom y rebase)
                         const accumulatedVal = finalDataPoint ? finalDataPoint[row.coin] : null;
 
                         return (
                           <TableRow key={row.coin} className="border-border/30 hover:bg-secondary/10">
                             <TableCell className="py-2">
                               <div className="flex items-center gap-2">
-                                <div className="size-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
+                                <div className="size-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                                 <span className="font-bold text-xs">{c?.symbol.toUpperCase()}</span>
                               </div>
                             </TableCell>
@@ -699,7 +728,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                         return (
                           <div key={`metrics-${bc}`} className="flex items-center gap-3 px-3 py-1.5 rounded-md bg-secondary/20 border border-border/40 w-fit">
                             <div className="flex items-center gap-1.5">
-                              <div className="size-2 rounded-full" style={{ backgroundColor: COLORS[i] }} />
+                              <div className="size-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                               <span className="text-xs font-bold text-foreground">{c?.symbol.toUpperCase()}</span>
                             </div>
                             
@@ -775,7 +804,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                               <ReferenceLine 
                                 key={`avg-${bc}`} 
                                 y={metric.avg} 
-                                stroke={COLORS[i]} 
+                                stroke={COLORS[i % COLORS.length]} 
                                 strokeDasharray="3 3" 
                                 strokeOpacity={0.4} 
                               />
@@ -786,7 +815,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                               <ReferenceLine 
                                 key={`med-${bc}`} 
                                 y={metric.median} 
-                                stroke={COLORS[i]} 
+                                stroke={COLORS[i % COLORS.length]} 
                                 strokeOpacity={0.6} 
                               />
                             );
@@ -798,7 +827,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                           <Bar 
                             key={`bar-${bc}`} 
                             dataKey={bc} 
-                            fill={COLORS[i]} 
+                            fill={COLORS[i % COLORS.length]} 
                             radius={[2, 2, 0, 0]}
                           />
                         ))}
