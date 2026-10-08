@@ -24,7 +24,7 @@ export const COIN_MANIFEST: CoinMeta[] = [
   { id: "solana", symbol: "SOL", name: "Solana", hyperliquidSymbol: "SOL", binanceSymbol: "SOL", image: "https://assets.coingecko.com/coins/images/4128/small/solana.png" },
   { id: "ripple", symbol: "XRP", name: "XRP", hyperliquidSymbol: "XRP", binanceSymbol: "XRP", image: "https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png" },
   { id: "dogecoin", symbol: "DOGE", name: "Dogecoin", hyperliquidSymbol: "DOGE", binanceSymbol: "DOGE", image: "https://assets.coingecko.com/coins/images/5/small/dogecoin.png" },
-  { id: "hyperliquid", symbol: "HYPE", name: "Hyperliquid", hyperliquidSymbol: "HYPE", binanceSymbol: "HYPE", image: "https://assets.coingecko.com/coins/images/40845/small/hyperliquid.jpeg" },
+  { id: "hyperliquid", symbol: "HYPE", name: "Hyperliquid", hyperliquidSymbol: "HYPE", binanceSymbol: "HYPE", image: "https://assets.coingecko.com/coins/images/50882/standard/hyperliquid.jpg" },
   { id: "cardano", symbol: "ADA", name: "Cardano", hyperliquidSymbol: "ADA", binanceSymbol: "ADA", image: "https://assets.coingecko.com/coins/images/975/small/cardano.png" },
   { id: "avalanche-2", symbol: "AVAX", name: "Avalanche", hyperliquidSymbol: "AVAX", binanceSymbol: "AVAX", image: "https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" },
   { id: "tron", symbol: "TRX", name: "TRON", hyperliquidSymbol: "TRX", binanceSymbol: "TRX", image: "https://assets.coingecko.com/coins/images/1094/small/tron-logo.png" },
@@ -118,10 +118,11 @@ export const COIN_MANIFEST: CoinMeta[] = [
   { id: "purr", symbol: "PURR", name: "Purr", hyperliquidSymbol: "PURR", binanceSymbol: "PURR" , image: "https://assets.coingecko.com/coins/images/37125/standard/PURR_CG.png"},
   { id: "pump", symbol: "PUMP", name: "Pump", hyperliquidSymbol: "PUMP", binanceSymbol: "PUMP", image: "https://assets.coingecko.com/coins/images/67164/standard/pump.jpg" },
   { id: "kinetix-network", symbol: "KNTQ", name: "Kinetix", hyperliquidSymbol: "KNTQ", binanceSymbol: "KNTQ" , image: "https://assets.coingecko.com/coins/images/70252/standard/kntq.png"},
-  { id: "drv", symbol: "DRV", name: "DRV", hyperliquidSymbol: "DRV", binanceSymbol: "DRV", image: "https://assets.coingecko.com/coins/images/52889/standard/Token_Logo.png" },
+  { id: "derive", symbol: "DRV", name: "DRV", hyperliquidSymbol: "DRV", binanceSymbol: "DRV", image: "https://assets.coingecko.com/coins/images/52889/standard/Token_Logo.png" },
   { id: "tread", symbol: "TREAD", name: "Tread", hyperliquidSymbol: "TREAD", binanceSymbol: "TREAD" , image: "https://assets.coingecko.com/coins/images/102174405/standard/TREAD_token_mark_500x500_black.png"},
   { id: "spcxd", symbol: "SPCXD", name: "SPCXD", hyperliquidSymbol: "SPCXD", binanceSymbol: "SPCXD" , image: "https://assets.coingecko.com/rwas/images/240/standard/spacex.jpg"},
   { id: "plasma", symbol: "XPL", name: "Plasma", hyperliquidSymbol: "XPL", binanceSymbol: "XPL" , image: "https://assets.coingecko.com/coins/images/66489/standard/Plasma-symbol-green-1.png"},
+  { id: "layerzero", symbol: "ZRO", name: "LayerZero", hyperliquidSymbol: "ZRO", binanceSymbol: "ZRO" , image: "https://assets.coingecko.com/coins/images/28206/standard/ftxG9_TJ_400x400.jpeg"},
 
 ];
 
