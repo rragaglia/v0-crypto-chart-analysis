@@ -52,7 +52,7 @@ const TIMEFRAMES_TABLE = [
   { key: "1y", ms: 365 * 24 * 60 * 60 * 1000, label: "1y%" },
 ];
 
-// Paleta ampliada a 8 colores bien distinguibles
+// Paleta ampliada a 8 colores
 const COLORS = [
   "#a3e635", // Verde lima
   "#3b82f6", // Azul
@@ -83,6 +83,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return [usdCoin, ...coins];
   }, [coins]);
 
+  // Persistencia de estados mediante localStorage
   const [baseCoins, setBaseCoins] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("crypto-rs-baseCoins");
@@ -121,6 +122,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return null;
   });
 
+  // Estado para las líneas de media/mediana del gráfico de barras
   const [hiddenLines, setHiddenLines] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("crypto-rs-hiddenLines");
@@ -129,14 +131,25 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return []; 
   });
 
+  // NUEVO: Estado para el comportamiento "Destacar/Ocultar" de los tokens en la leyenda
+  const [assetStates, setAssetStates] = useState<Record<string, 'normal' | 'highlight' | 'hidden'>>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("crypto-rs-assetStates");
+      if (saved) return JSON.parse(saved);
+    }
+    return {};
+  });
+
   const [addValue, setAddValue] = useState("");
 
+  // Guardar estados automáticamente
   useEffect(() => { localStorage.setItem("crypto-rs-baseCoins", JSON.stringify(baseCoins)); }, [baseCoins]);
   useEffect(() => { localStorage.setItem("crypto-rs-quoteCoin", quoteCoin); }, [quoteCoin]);
   useEffect(() => { localStorage.setItem("crypto-rs-timeframe", timeframe); }, [timeframe]);
   useEffect(() => { localStorage.setItem("crypto-rs-rebaseDate", JSON.stringify(rebaseDate)); }, [rebaseDate]);
   useEffect(() => { localStorage.setItem("crypto-rs-zoomDate", JSON.stringify(zoomDate)); }, [zoomDate]);
   useEffect(() => { localStorage.setItem("crypto-rs-hiddenLines", JSON.stringify(hiddenLines)); }, [hiddenLines]);
+  useEffect(() => { localStorage.setItem("crypto-rs-assetStates", JSON.stringify(assetStates)); }, [assetStates]);
 
   const handleSwap = () => {
     if (baseCoins.length === 1) {
@@ -145,6 +158,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       setQuoteCoin(oldBase);
       setRebaseDate(null);
       setZoomDate(null);
+      setAssetStates({});
     }
   };
 
@@ -171,6 +185,22 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     setHiddenLines(prev => 
       prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
     );
+  };
+
+  // Función para ciclar estados de la leyenda (Normal -> Destacado -> Oculto -> Normal)
+  const handleLegendClick = (e: any) => {
+    const dataKey = e.dataKey;
+    if (!dataKey) return;
+    
+    setAssetStates(prev => {
+      const current = prev[dataKey] || 'normal';
+      let nextState: 'normal' | 'highlight' | 'hidden' = 'normal';
+      
+      if (current === 'normal') nextState = 'highlight';
+      else if (current === 'highlight') nextState = 'hidden';
+      
+      return { ...prev, [dataKey]: nextState };
+    });
   };
 
   const tfConfig = TIMEFRAMES.find((t) => t.value === timeframe) || TIMEFRAMES[3];
@@ -322,7 +352,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return { chartData: finalMerged, segmentData: segData, segmentTypeLabel, segmentMetrics: metrics };
   }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate, zoomDate, allCoinsToFetch]);
 
-  // Cálculos dinámicos para la tabla de rendimientos corrigiendo la falta de resolución en cortísimo plazo
+  // Cálculos dinámicos para la tabla de rendimientos
   const tableData = useMemo(() => {
     if (!data?.results) return [];
     
@@ -384,7 +414,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
         let pastB = getClosestPriceInfo(bc, targetTs, tolerance);
         
         if (currentRatio !== null && pastQ !== null && pastB !== null) {
-          // Fallback: Si no hay resolución suficiente y el punto buscado es el mismo que el actual, buscamos la vela anterior
           if (currentB && pastB.ts === currentB.ts) {
             const olderB = getStrictlyOlderPrice(bc, currentB.ts);
             if (olderB) {
@@ -433,6 +462,8 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       minute: timeframe === "4h" || timeframe === "1d" ? "2-digit" : undefined 
     });
   };
+
+  const hasAnyHighlight = Object.values(assetStates).includes('highlight');
 
   return (
     <div className="flex flex-col gap-6">
@@ -555,7 +586,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
             
             <div className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Info className="size-3.5" />
-              Haz clic en el gráfico para fijar punto 0% o ampliar
+              Haz clic en el gráfico para fijar punto 0%. Clickea la leyenda para destacar u ocultar líneas.
             </div>
           </div>
         </CardHeader>
@@ -610,12 +641,24 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                         return [`${value > 0 ? "+" : ""}${value.toFixed(2)}%${usdText}`, `${symbol} / ${quoteData?.symbol.toUpperCase()}`];
                       }}
                     />
+                    
+                    {/* LEYENDA INTERACTIVA PARA LOS ESTADOS DE LÍNEA */}
                     <Legend 
                       verticalAlign="top" 
                       height={36} 
-                      formatter={(value) => {
+                      onClick={handleLegendClick}
+                      formatter={(value, entry: any) => {
+                        const state = assetStates[value] || 'normal';
                         const symbol = extendedCoins.find((c: any) => c.id === value)?.symbol.toUpperCase() || value;
-                        return <span style={{ color: "var(--foreground)", fontWeight: 500, fontSize: "13px", cursor: "pointer" }}>{symbol} / {quoteData?.symbol.toUpperCase()}</span>;
+                        const label = `${symbol} / ${quoteData?.symbol.toUpperCase()}`;
+                        
+                        if (state === 'hidden') {
+                          return <span className="opacity-40 line-through cursor-pointer text-[13px]">{label}</span>;
+                        }
+                        if (state === 'highlight') {
+                          return <span className="font-bold underline cursor-pointer text-[13px]" style={{ color: entry.color }}>{label}</span>;
+                        }
+                        return <span className="font-medium cursor-pointer text-[13px]" style={{ color: "var(--foreground)" }}>{label}</span>;
                       }}
                     />
                     
@@ -625,17 +668,29 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                       <ReferenceLine x={rebaseDate} stroke="var(--primary)" strokeDasharray="4 4" opacity={0.5} />
                     )}
 
-                    {baseCoins.map((bc, i) => (
-                      <Line 
-                        key={bc}
-                        type="monotone" 
-                        dataKey={bc} 
-                        stroke={COLORS[i % COLORS.length]} 
-                        strokeWidth={2} 
-                        dot={false} 
-                        activeDot={{ r: 4 }}
-                      />
-                    ))}
+                    {baseCoins.map((bc, i) => {
+                      const state = assetStates[bc] || 'normal';
+                      const isHidden = state === 'hidden';
+                      const isHighlighted = state === 'highlight';
+                      
+                      // Opacidad baja si hay un destacado activo pero esta línea NO es la destacada
+                      const opacity = hasAnyHighlight && !isHighlighted ? 0.15 : 1;
+                      const strokeWidth = isHighlighted ? 3.5 : 2;
+
+                      return (
+                        <Line 
+                          key={bc}
+                          type="monotone" 
+                          dataKey={bc} 
+                          stroke={COLORS[i % COLORS.length]} 
+                          strokeWidth={strokeWidth} 
+                          strokeOpacity={opacity}
+                          hide={isHidden}
+                          dot={false} 
+                          activeDot={isHidden ? false : { r: 4 }}
+                        />
+                      );
+                    })}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -659,15 +714,18 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                     <TableBody>
                       {tableData.map((row, i) => {
                         const c = extendedCoins.find((x: any) => x.id === row.coin);
-                        
+                        const assetState = assetStates[row.coin] || 'normal';
                         const accumulatedVal = finalDataPoint ? finalDataPoint[row.coin] : null;
 
+                        // Si está oculta en el gráfico, le bajamos la opacidad a la fila para ser consistentes
+                        const rowClass = `border-border/30 hover:bg-secondary/10 transition-opacity ${assetState === 'hidden' ? 'opacity-40 grayscale' : ''}`;
+
                         return (
-                          <TableRow key={row.coin} className="border-border/30 hover:bg-secondary/10">
+                          <TableRow key={row.coin} className={rowClass}>
                             <TableCell className="py-2">
                               <div className="flex items-center gap-2">
                                 <div className="size-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                                <span className="font-bold text-xs">{c?.symbol.toUpperCase()}</span>
+                                <span className={`font-bold text-xs ${assetState === 'hidden' ? 'line-through' : ''}`}>{c?.symbol.toUpperCase()}</span>
                               </div>
                             </TableCell>
                             <TableCell className="py-2 text-right font-mono text-xs text-muted-foreground">
@@ -718,6 +776,9 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                     {/* ETIQUETAS DE MEDIANA Y PROMEDIO INTERACTIVAS */}
                     <div className="flex flex-wrap gap-2 mt-1">
                       {baseCoins.map((bc, i) => {
+                        // Si la línea está completamente oculta, también escondemos sus etiquetas de promedio
+                        if (assetStates[bc] === 'hidden') return null;
+
                         const metric = segmentMetrics[bc];
                         if (!metric) return null;
                         
@@ -726,7 +787,7 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
                         const c = extendedCoins.find((x: any) => x.id === bc);
                         return (
-                          <div key={`metrics-${bc}`} className="flex items-center gap-3 px-3 py-1.5 rounded-md bg-secondary/20 border border-border/40 w-fit">
+                          <div key={`metrics-${bc}`} className={`flex items-center gap-3 px-3 py-1.5 rounded-md bg-secondary/20 border border-border/40 w-fit ${hasAnyHighlight && assetStates[bc] !== 'highlight' ? 'opacity-30' : ''}`}>
                             <div className="flex items-center gap-1.5">
                               <div className="size-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                               <span className="text-xs font-bold text-foreground">{c?.symbol.toUpperCase()}</span>
@@ -793,6 +854,9 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                         
                         {/* Renderizado dinámico de las líneas de referencia */}
                         {baseCoins.map((bc, i) => {
+                          const assetState = assetStates[bc] || 'normal';
+                          if (assetState === 'hidden') return null;
+
                           const metric = segmentMetrics[bc];
                           if (!metric) return null;
                           const showAvg = !hiddenLines.includes(`${bc}-avg`);
@@ -823,14 +887,23 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                           return lines;
                         })}
 
-                        {baseCoins.map((bc, i) => (
-                          <Bar 
-                            key={`bar-${bc}`} 
-                            dataKey={bc} 
-                            fill={COLORS[i % COLORS.length]} 
-                            radius={[2, 2, 0, 0]}
-                          />
-                        ))}
+                        {baseCoins.map((bc, i) => {
+                          const assetState = assetStates[bc] || 'normal';
+                          const isHidden = assetState === 'hidden';
+                          const isHighlighted = assetState === 'highlight';
+                          const opacity = hasAnyHighlight && !isHighlighted ? 0.15 : 1;
+
+                          return (
+                            <Bar 
+                              key={`bar-${bc}`} 
+                              dataKey={bc} 
+                              fill={COLORS[i % COLORS.length]} 
+                              fillOpacity={opacity}
+                              hide={isHidden}
+                              radius={[2, 2, 0, 0]}
+                            />
+                          );
+                        })}
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
