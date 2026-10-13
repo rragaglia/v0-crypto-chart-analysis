@@ -1,48 +1,38 @@
-import { NextRequest, NextResponse } from "next/server";
-import { fetchPriceDataWithFallback } from "@/lib/price-fetcher";
+import { NextResponse } from "next/server";
+import { fetchPricesForCoin } from "@/lib/price-fetcher";
+import { COIN_MANIFEST } from "@/lib/coin-manifest";
 
-export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const coinIds = searchParams.get("coinIds")?.split(",") || [];
-  const days = searchParams.get("days") || "365";
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const coinIds = searchParams.get("coinIds")?.split(",") || [];
+    const days = searchParams.get("days") || "30";
+    
+    // 1. Capturamos el intervalo que pide el frontend (ej: "15m", "1h")
+    const interval = searchParams.get("interval"); 
 
-  if (coinIds.length === 0) {
-    return NextResponse.json({ results: {} });
+    const results: Record<string, any> = {};
+
+    await Promise.all(
+      coinIds.map(async (id) => {
+        const coin = COIN_MANIFEST.find((c) => c.id === id);
+        if (coin) {
+          try {
+            // 2. Se lo pasamos al fetcher como tercer parámetro
+            const data = await fetchPricesForCoin(coin, days, interval || undefined);
+            if (data && data.prices && data.prices.length > 0) {
+              results[id] = data;
+            }
+          } catch (e) {
+            console.error(`Error fetching ${id}:`, e);
+          }
+        }
+      })
+    );
+
+    return NextResponse.json({ results });
+  } catch (error) {
+    console.error("Batch API Error:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
-
-  const results: Record<
-    string,
-    { prices: [number, number][]; error?: string; source?: string }
-  > = {};
-
-  // Fetch sequentially to avoid rate limits
-  for (const coinId of coinIds) {
-    try {
-      const result = await fetchPriceDataWithFallback(coinId, days);
-
-      if (!result.success || !result.data) {
-        results[coinId] = { 
-          prices: [], 
-          error: result.error || "No data available" 
-        };
-      } else {
-        results[coinId] = { 
-          prices: result.data.prices,
-          source: result.data.source
-        };
-      }
-    } catch (error) {
-      results[coinId] = { 
-        prices: [], 
-        error: error instanceof Error ? error.message : "Failed to fetch" 
-      };
-    }
-
-    // Small delay between requests to be respectful to APIs
-    if (coinIds.indexOf(coinId) < coinIds.length - 1) {
-      await new Promise((r) => setTimeout(r, 300));
-    }
-  }
-
-  return NextResponse.json({ results });
 }
