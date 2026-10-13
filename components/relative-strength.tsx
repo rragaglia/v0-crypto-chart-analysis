@@ -28,15 +28,16 @@ const batchFetcher = async (url: string) => {
   return data;
 };
 
+// Agregamos el parámetro de intervalo a la configuración de cada temporalidad
 const TIMEFRAMES = [
-  { value: "4h", label: "4 Horas", days: "1" },
-  { value: "1d", label: "1 Día", days: "1" },
-  { value: "7d", label: "7 Días", days: "7" },
-  { value: "30d", label: "30 Días", days: "30" },
-  { value: "180d", label: "6 Meses", days: "180" },
-  { value: "365d", label: "1 Año", days: "365" },
-  { value: "730d", label: "2 Años", days: "730" },
-  { value: "1095d", label: "3 Años", days: "1095" },
+  { value: "4h", label: "4 Horas", days: "1", interval: "15m" },
+  { value: "1d", label: "1 Día", days: "1", interval: "15m" },
+  { value: "7d", label: "7 Días", days: "7", interval: "1h" },
+  { value: "30d", label: "30 Días", days: "30", interval: "4h" },
+  { value: "180d", label: "6 Meses", days: "180", interval: "1d" },
+  { value: "365d", label: "1 Año", days: "365", interval: "1d" },
+  { value: "730d", label: "2 Años", days: "730", interval: "1d" },
+  { value: "1095d", label: "3 Años", days: "1095", interval: "1w" },
 ];
 
 const TIMEFRAMES_TABLE = [
@@ -52,16 +53,15 @@ const TIMEFRAMES_TABLE = [
   { key: "1y", ms: 365 * 24 * 60 * 60 * 1000, label: "1y%" },
 ];
 
-// Paleta ampliada a 8 colores
 const COLORS = [
-  "#a3e635", // Verde lima
-  "#3b82f6", // Azul
-  "#f59e0b", // Ámbar/Naranja
-  "#ec4899", // Rosa
-  "#8b5cf6", // Violeta
-  "#14b8a6", // Turquesa
-  "#f43f5e", // Rojo rosado
-  "#0ea5e9"  // Celeste
+  "#a3e635", 
+  "#3b82f6", 
+  "#f59e0b", 
+  "#ec4899", 
+  "#8b5cf6", 
+  "#14b8a6", 
+  "#f43f5e", 
+  "#0ea5e9"  
 ];
 
 const formatUsd = (price: number) => {
@@ -83,7 +83,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return [usdCoin, ...coins];
   }, [coins]);
 
-  // Persistencia de estados mediante localStorage
   const [baseCoins, setBaseCoins] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("crypto-rs-baseCoins");
@@ -122,7 +121,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return null;
   });
 
-  // Estado para las líneas de media/mediana del gráfico de barras
   const [hiddenLines, setHiddenLines] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("crypto-rs-hiddenLines");
@@ -131,7 +129,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return []; 
   });
 
-  // NUEVO: Estado para el comportamiento "Destacar/Ocultar" de los tokens en la leyenda
   const [assetStates, setAssetStates] = useState<Record<string, 'normal' | 'highlight' | 'hidden'>>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("crypto-rs-assetStates");
@@ -142,7 +139,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
 
   const [addValue, setAddValue] = useState("");
 
-  // Guardar estados automáticamente
   useEffect(() => { localStorage.setItem("crypto-rs-baseCoins", JSON.stringify(baseCoins)); }, [baseCoins]);
   useEffect(() => { localStorage.setItem("crypto-rs-quoteCoin", quoteCoin); }, [quoteCoin]);
   useEffect(() => { localStorage.setItem("crypto-rs-timeframe", timeframe); }, [timeframe]);
@@ -187,7 +183,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     );
   };
 
-  // Función para ciclar estados de la leyenda (Normal -> Destacado -> Oculto -> Normal)
   const handleLegendClick = (e: any) => {
     const dataKey = e.dataKey;
     if (!dataKey) return;
@@ -209,8 +204,9 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     .filter(id => id !== "usd")
     .join(",");
 
+  // Pasamos explícitamente el parámetro interval a la API
   const { data, isLoading, mutate, isValidating } = useSWR(
-    allCoinsToFetch.length > 0 ? `/api/crypto/batch?coinIds=${allCoinsToFetch}&days=${tfConfig.days}` : null,
+    allCoinsToFetch.length > 0 ? `/api/crypto/batch?coinIds=${allCoinsToFetch}&days=${tfConfig.days}&interval=${tfConfig.interval}` : null,
     batchFetcher,
     { revalidateOnFocus: false, dedupingInterval: 300000 }
   );
@@ -295,15 +291,34 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
       return point;
     });
 
+    // Nueva lógica de segmentación que contempla Velas de 15 minutos para 4hs
     let segmentType = "day";
     let segmentTypeLabel = "Día";
-    if (["4h", "1d"].includes(timeframe)) { segmentType = "hour"; segmentTypeLabel = "Hora"; }
-    else if (["7d", "30d"].includes(timeframe)) { segmentType = "day"; segmentTypeLabel = "Día"; }
-    else if (["180d"].includes(timeframe)) { segmentType = "week"; segmentTypeLabel = "Semana"; }
-    else { segmentType = "month"; segmentTypeLabel = "Mes"; }
+    if (timeframe === "4h") { 
+      segmentType = "15m"; 
+      segmentTypeLabel = "15 Minutos"; 
+    } else if (timeframe === "1d") { 
+      segmentType = "hour"; 
+      segmentTypeLabel = "Hora"; 
+    } else if (["7d", "30d"].includes(timeframe)) { 
+      segmentType = "day"; 
+      segmentTypeLabel = "Día"; 
+    } else if (["180d"].includes(timeframe)) { 
+      segmentType = "week"; 
+      segmentTypeLabel = "Semana"; 
+    } else { 
+      segmentType = "month"; 
+      segmentTypeLabel = "Mes"; 
+    }
 
     const getBucketLabel = (ts: number, type: string) => {
       const d = new Date(ts);
+      if (type === "15m") {
+        // Redondear al bloque de 15 minutos más cercano
+        const minutes = Math.floor(d.getMinutes() / 15) * 15;
+        d.setMinutes(minutes, 0, 0);
+        return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+      }
       if (type === "hour") return `${d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} ${d.getHours()}:00`;
       if (type === "day") return d.toLocaleDateString("es-ES", {day: "2-digit", month: "short"});
       if (type === "week") {
@@ -352,7 +367,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
     return { chartData: finalMerged, segmentData: segData, segmentTypeLabel, segmentMetrics: metrics };
   }, [data, baseCoins, quoteCoin, timeframe, tfConfig.days, rebaseDate, zoomDate, allCoinsToFetch]);
 
-  // Cálculos dinámicos para la tabla de rendimientos
   const tableData = useMemo(() => {
     if (!data?.results) return [];
     
@@ -642,7 +656,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                       }}
                     />
                     
-                    {/* LEYENDA INTERACTIVA PARA LOS ESTADOS DE LÍNEA */}
                     <Legend 
                       verticalAlign="top" 
                       height={36} 
@@ -673,7 +686,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                       const isHidden = state === 'hidden';
                       const isHighlighted = state === 'highlight';
                       
-                      // Opacidad baja si hay un destacado activo pero esta línea NO es la destacada
                       const opacity = hasAnyHighlight && !isHighlighted ? 0.15 : 1;
                       const strokeWidth = isHighlighted ? 3.5 : 2;
 
@@ -717,7 +729,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                         const assetState = assetStates[row.coin] || 'normal';
                         const accumulatedVal = finalDataPoint ? finalDataPoint[row.coin] : null;
 
-                        // Si está oculta en el gráfico, le bajamos la opacidad a la fila para ser consistentes
                         const rowClass = `border-border/30 hover:bg-secondary/10 transition-opacity ${assetState === 'hidden' ? 'opacity-40 grayscale' : ''}`;
 
                         return (
@@ -776,7 +787,6 @@ export function RelativeStrength({ coins }: { coins: any[] }) {
                     {/* ETIQUETAS DE MEDIANA Y PROMEDIO INTERACTIVAS */}
                     <div className="flex flex-wrap gap-2 mt-1">
                       {baseCoins.map((bc, i) => {
-                        // Si la línea está completamente oculta, también escondemos sus etiquetas de promedio
                         if (assetStates[bc] === 'hidden') return null;
 
                         const metric = segmentMetrics[bc];
